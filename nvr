@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# One entry point for Rockchip YOLO C++. No SSH tunnel or service manager.
+set -euo pipefail
+
+export NVR_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPYCACHEPREFIX="$NVR_HOME/.local/cache/pycache"
+export LD_LIBRARY_PATH="$NVR_HOME/.local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+command="${1:-help}"
+[[ "$(uname -m)" == aarch64 || "$command" == cross-build || "$command" == help ]] || {
+    echo "Use ./nvr cross-build on x86; run the app on RK3576 or RK3588." >&2
+    exit 1
+}
+if [[ $# -gt 0 ]]; then
+    shift
+fi
+
+case "$command" in
+    setup)
+        exec bash "$NVR_HOME/tools/setup.sh" "$@"
+        ;;
+
+    build)
+        exec bash "$NVR_HOME/tools/build.sh" "$@"
+        ;;
+
+    cross-build)
+        exec bash "$NVR_HOME/tools/cross-build.sh" "$@"
+        ;;
+
+    run)
+        binary="$NVR_HOME/.local/build/bin/rk-nvr-server"
+        [[ -x "$binary" ]] || {
+            echo "Run ./nvr build first." >&2
+            exit 1
+        }
+        exec "$binary" --data "$NVR_HOME/.local/state" --web "$NVR_HOME/.local/build/web" "$@"
+        ;;
+    cli)
+        cd "$NVR_HOME"
+        exec "$NVR_HOME/.local/build/bin/rk-nvr" "$@"
+        ;;
+    inspect)
+        exec "$NVR_HOME/.local/build/bin/rk-model-info" "$@"
+        ;;
+
+    help)
+        echo "Usage: ./nvr {setup|build [--cli-only]|cross-build|run [--port 8080]|cli CONFIG|inspect MODEL}"
+        ;;
+
+    *)
+        echo "Unknown command: $command (use ./nvr help)" >&2
+        exit 1
+        ;;
+esac

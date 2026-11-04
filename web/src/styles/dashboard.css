@@ -1,0 +1,212 @@
+.channel-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 28px;
+}
+.channel-card {
+    min-width: 0;
+}
+.channel-grid > .channel-card:only-child {
+    grid-column: 1 / -1;
+    width: 100%;
+    max-width: 1100px;
+}
+.channel-visual {
+    position: relative;
+    border-radius: 18px;
+    overflow: hidden;
+    background: #171717;
+}
+.card-head {
+    position: absolute;
+    z-index: 1;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 32px 18px 15px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    background: linear-gradient(transparent, #0009);
+    pointer-events: none;
+}
+.card-head h3 {
+    font-size: 18px;
+    color: white;
+    text-shadow: 0 1px 3px #000;
+    overflow-wrap: anywhere;
+}
+.badge {
+    font-size: 10px;
+    padding: 3px 7px;
+    border: 1px solid #444;
+    border-radius: 6px;
+    background: #242424;
+    color: #bbb;
+    white-space: nowrap;
+}
+.badge.good {
+    color: #98dda4;
+    border-color: #355b3c;
+    background: #1d2b20;
+}
+.badge.bad {
+    color: #f19a9a;
+    border-color: #743844;
+    background: #332125;
+}
+.card-head .badge {
+    background: #0008;
+    border-color: #ffffff30;
+    color: #ddd;
+}
+.card-head .badge.good {
+    color: #a7e5b2;
+}
+.frame {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16/9;
+    background: #111;
+    overflow: hidden;
+}
+.frame canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+.native-stream video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+.native-stream canvas {
+    position: relative;
+    pointer-events: none;
+}
+.frame-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    font-size: 12px;
+    color: #aaa;
+    background: #171717;
+}
+.frame-tag {
+    position: absolute;
+    right: 12px;
+    top: 12px;
+    color: #ddd;
+    background: #0008;
+    border-radius: 5px;
+    padding: 3px 7px;
+    font-size: 10px;
+}
+.preview-button {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: 18px;
+    background: none;
+}
+.preview-button:focus-visible {
+    outline-offset: -3px;
+}
+.channel-body {
+    padding: 12px 2px 0;
+}
+.channel-metrics {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.channel-metrics > div {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+.channel-metrics strong {
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+}
+.channel-metrics small {
+    font-size: 11px;
+}
+.channel-metrics em {
+    font-size: 10px;
+    color: var(--muted);
+    font-style: normal;
+    margin-left: 2px;
+}
+.timeline {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 10px 0 14px;
+}
+.timeline > span {
+    font-size: 11px;
+    white-space: nowrap;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+.timeline input {
+    height: 5px;
+    margin: 0;
+}
+.card-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.card-controls button {
+    font-size: 12px;
+    padding: 6px 11px;
+}
+.card-controls .text-danger {
+    margin-left: auto;
+    background: transparent;
+    border-color: transparent;
+}
+.card-foot {
+    display: flex;
+    justify-content: space-between;
+    gap: 15px;
+    margin-top: 10px;
+    font-size: 10px;
+    color: var(--muted);
+}
+.card-foot span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.card-foot span:last-child {
+    white-space: nowrap;
+}
+.empty-state {
+    border: 1px dashed #333;
+    border-radius: 16px;
+    background: #111;
+    text-align: center;
+    padding: 80px 25px;
+    color: #ddd;
+}
+.empty-state p {
+    color: var(--muted);
+    margin: 10px auto 24px;
+    max-width: 400px;
+    font-size: 13px;
+}

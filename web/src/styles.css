@@ -1,0 +1,6 @@
+@import "./styles/base.css";
+@import "./styles/shell.css";
+@import "./styles/dashboard.css";
+@import "./styles/warehouse.css";
+@import "./styles/dialogs.css";
+@import "./styles/responsive.css";

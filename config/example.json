@@ -1,0 +1,14 @@
+{
+    "model": ".local/test-assets/model.rknn",
+    "output": ".local/state/recordings",
+    "preprocess": "rga",
+    "segment_seconds": 60,
+    "queue_capacity": 1,
+    "detect_every": 1,
+    "lossless_analytics": false,
+    "verify_io": false,
+    "confidence": 0.35,
+    "nms_iou": 0.45,
+    "max_seconds": 0,
+    "channels": [{ "id": "camera-1", "uri": "rtsp://USER:PASSWORD@CAMERA/STREAM" }]
+}

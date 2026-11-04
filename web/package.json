@@ -1,0 +1,20 @@
+{
+    "name": "rockchip-yolo-console",
+    "description": "C++ YOLO performance demo dashboard for Rockchip RK3576 and RK3588",
+    "private": true,
+    "version": "1.0.0",
+    "type": "module",
+    "scripts": {
+        "build": "tsc -b && vite build"
+    },
+    "dependencies": {
+        "react": "19.1.1",
+        "react-dom": "19.1.1"
+    },
+    "devDependencies": {
+        "@types/react": "19.1.16",
+        "@types/react-dom": "19.1.9",
+        "typescript": "5.9.2",
+        "vite": "7.1.7"
+    }
+}

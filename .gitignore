@@ -1,0 +1,15 @@
+.local/
+*.rknn
+web/node_modules/
+__pycache__/
+.DS_Store
+build/
+dist/
+*.log
+*.pyc
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.tar.gz

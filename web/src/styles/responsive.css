@@ -1,0 +1,144 @@
+@media (min-width: 1700px) {
+    .asset-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+@media (max-width: 1100px) {
+    .asset-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .channel-metrics > div {
+        flex-direction: column;
+        gap: 0;
+    }
+    .system-strip {
+        gap: 10px 16px;
+    }
+}
+@media (max-width: 780px) {
+    .sidebar {
+        width: 60px;
+        padding: 18px 6px;
+    }
+    .brand {
+        margin-bottom: 28px;
+    }
+    .brand-mark {
+        width: 42px;
+        height: 42px;
+    }
+    .nav-item {
+        width: 42px;
+        height: 42px;
+        border-radius: 10px;
+    }
+    .nav-tooltip {
+        left: 50px;
+    }
+    .workspace {
+        margin-left: 60px;
+    }
+    main {
+        padding: 22px 16px 28px;
+    }
+    h1 {
+        font-size: 21px;
+    }
+    .page-heading {
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 22px;
+    }
+    .page-heading p {
+        font-size: 11px;
+    }
+    .page-heading > .primary {
+        padding: 8px 10px;
+        white-space: nowrap;
+        font-size: 11px;
+    }
+    .channel-grid {
+        grid-template-columns: 1fr;
+        gap: 24px;
+    }
+    .channel-visual {
+        border-radius: 14px;
+    }
+    .card-head {
+        padding: 26px 12px 10px;
+    }
+    .card-head h3 {
+        font-size: 15px;
+    }
+    .channel-metrics {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 7px;
+    }
+    .channel-metrics strong {
+        font-size: 12px;
+    }
+    .channel-metrics small {
+        font-size: 11px;
+    }
+    .card-controls {
+        gap: 5px;
+    }
+    .card-controls button {
+        padding: 7px 9px;
+        font-size: 11px;
+    }
+    .card-foot {
+        gap: 8px;
+        font-size: 9px;
+    }
+    .asset-grid {
+        grid-template-columns: 1fr;
+        gap: 18px;
+    }
+    .section-bar {
+        gap: 12px;
+    }
+    .search {
+        max-width: 180px;
+    }
+    .system-strip {
+        padding: 10px 16px;
+        font-size: 10px;
+        gap: 8px 12px;
+    }
+    .system-strip .connection {
+        margin-left: 0;
+    }
+    .form-grid {
+        grid-template-columns: 1fr;
+    }
+    .form-grid label {
+        margin: 10px 0;
+    }
+    .dialog {
+        padding: 20px;
+    }
+    .model-facts {
+        flex-wrap: wrap;
+    }
+}
+@media (max-width: 420px) {
+    .page-heading {
+        flex-wrap: wrap;
+    }
+    .card-head h3 {
+        font-size: 14px;
+    }
+    .frame-tag {
+        font-size: 9px;
+    }
+    .timeline > span {
+        font-size: 10px;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    * {
+        transition: none !important;
+        scroll-behavior: auto !important;
+    }
+}
