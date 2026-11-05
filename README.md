@@ -1,266 +1,131 @@
 # Rockchip YOLO C++
 
-A C++ demo for exploring YOLO detection performance on **RK3576 and RK3588**.
+YOLO object detection on **RK3576 and RK3588**, with a C++ engine and a web dashboard.
+Uses **MPP** for video decoding, **RGA** for preprocessing, and **RKNN** for NPU inference.
 
-It uses MPP for video decoding, RGA for image preprocessing, and RKNN for NPU
-inference. DMA-BUF lets these hardware blocks share image buffers. The web
-dashboard gives you an NVR-style interface to try video sources, view detections,
-record streams, and compare CPU and hardware preprocessing.
+[Download](https://github.com/Hanzo-Huang/rockchip-yolo-cpp/releases) ·
+[Build from source](#build-from-source) ·
+[Use the engine](#use-the-engine) ·
+[Report an issue](https://github.com/Hanzo-Huang/rockchip-yolo-cpp/issues)
 
-## Screenshots
+![Dashboard with video playback and YOLO detections](assets/screenshots/dashboard-running.jpg)
 
-Captured from the app running on RK3588. The running channel uses YOLO26n with
-a 1080p video file.
+- RTSP streams, video files, and H.264 V4L2 cameras.
+- Video playback, detection overlays, recording, and model/video uploads.
+- Automatic parallel inference: two NPU workers on RK3576, three on RK3588.
+- RGA and CPU preprocessing modes for comparison; both use MPP and RKNN.
 
-| Empty dashboard                                                               | Dashboard with a running channel                                                                   |
-| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| ![Empty dashboard](assets/screenshots/dashboard-empty.jpg)                    | ![Running channel with YOLO detections and FPS counters](assets/screenshots/dashboard-running.jpg) |
-| **Video manager**                                                             | **Model manager with an uploaded model**                                                           |
-| ![Video manager with an uploaded video](assets/screenshots/video-manager.jpg) | ![Model manager with a validated YOLO26n model](assets/screenshots/model-manager.jpg)              |
+## Quick start
 
-## Get started
+Use a board image with working **MPP, RGA, and RKNPU drivers**. The prebuilt
+package targets **Ubuntu 26.04 ARM64** and includes the application, shared
+libraries, and web frontend. Models are supplied separately.
 
-Use a Debian/Ubuntu board image with working **MPP, RGA, and RKNPU drivers**.
-
-### Use a prebuilt release
-
-Download the Ubuntu 26.04 ARM64 runtime archive from
-[Releases](https://github.com/Hanzo-Huang/rockchip-yolo-cpp/releases). It supports
-RK3576 and RK3588 boards with compatible drivers. Extract the archive and run:
+Download the runtime archive and `SHA256SUMS` from
+[Releases](https://github.com/Hanzo-Huang/rockchip-yolo-cpp/releases), then run on the board:
 
 ```bash
+sha256sum --check SHA256SUMS
+tar -xzf rockchip-yolo-cpp-v0.1.0-ubuntu26.04-arm64.tar.gz
 cd rockchip-yolo-cpp
 ./nvr run
 ```
 
-Keep the extracted directory together: it contains the executables, shared
-libraries, and web frontend. Models are uploaded separately. Install the
-`ffmpeg` package if `ffprobe` is missing; model and video inspection use it.
+Open **http://BOARD_IP:8080** in your browser. To change the port, use
+`./nvr run --port 8088`. Press **Ctrl-C** to stop.
 
-### Build from source
+If `ffprobe` is missing, install it with `sudo apt install ffmpeg`.
+Keep the extracted directory together; the executables need its libraries and web assets.
 
-Run these commands on the board if you want to compile the application:
+### Start a detection channel
+
+1. In **Model warehouse**, upload a `.rknn` model and its `metadata.yaml`, or a ZIP containing both.
+2. For a video file, upload an MP4 in **Video warehouse**. For a camera or RTSP stream, select it when adding a channel.
+3. In **Dashboard**, choose **Add channel**, select the source and model, then **Start**.
+
+Use **H.264** for live browser playback. The engine also decodes 8-bit H.265,
+but browser playback depends on codec support.
+
+**Run on a trusted LAN. There is no authentication.**
+
+## Models and performance
+
+Export each model for the board's chip: RK3576 and RK3588 need their own `.rknn`
+exports. The metadata must match the model's input size and class names.
+
+| Model/export | Support |
+| --- | --- |
+| YOLO26n, Rockchip two-output scores/xyxy | Tested on RK3576 and RK3588 |
+| Decoded single-output YOLO; nine-output affine INT8 DFL | Implemented; compatibility depends on the export |
+| Post-NMS end-to-end exports, segmentation, pose, OBB | Unsupported |
+
+Models must have one batch-1 RGB image input. See
+[RKNN Model Zoo](https://github.com/airockchip/rknn_model_zoo) for model export examples.
+Inspect a model with `./nvr inspect /path/to/model.rknn`.
+
+Single-channel tests with **YOLO26n, 640×640 input, RGA preprocessing, and a
+4K 60 FPS H.264 RTSP stream** reached approximately **60 inference FPS on both boards**.
+Throughput depends on the model and concurrent workload.
+
+The dashboard reports decode and inference FPS separately from browser playback.
+When inference falls behind, older queued frames are dropped so playback can continue.
+
+## Build from source
+
+On the board:
 
 ```bash
+git clone https://github.com/Hanzo-Huang/rockchip-yolo-cpp.git
 cd rockchip-yolo-cpp
 ./nvr build
 ./nvr run
 ```
 
-The first build needs internet access. It installs missing development packages
-through apt, asks for sudo when needed, and downloads the private SDK/build
-dependencies. It does not install or replace kernel drivers.
+The build command prepares dependencies, builds C++ with CMake, and builds the
+React frontend. The first run needs internet access and may request sudo to
+install packages. It does not install kernel drivers.
 
-Open **http://BOARD_IP:8080** in your computer's browser. Replace `BOARD_IP` with
-your board's IP address or hostname. The server listens on `0.0.0.0`; no SSH
-forwarding is needed.
+| Command | Purpose |
+| --- | --- |
+| `./nvr build --cli-only` | Build the CLI, worker, and model inspector without the web server/frontend |
+| `./nvr cross-build` | Build and package Ubuntu 26.04 ARM64 on an x86_64 Linux host with Docker |
+| `./nvr cli config/example.json` | Run without the dashboard; edit the example's model and source paths first |
 
-To use another port:
+Cross-build output is `.local/dist/rockchip-yolo-cpp-ubuntu26-arm64.tar.gz`.
+Set `JOBS=8` to change build parallelism. Existing SDK installations can be
+selected with `ROCKCHIP_SDK` and `MPP_ROOT`; see [tools/build.sh](tools/build.sh).
 
-```bash
-./nvr run --port 8088
-```
+## Use the engine
 
-Press **Ctrl-C** to stop the server and finish active recordings.
-
-## Run your first detection
-
-1. Open **Model warehouse** and upload a `.rknn` model with its `metadata.yaml`.
-   You can choose each file separately, or upload a ZIP containing both.
-2. If you want to test a video file, upload an MP4 in **Video warehouse**.
-   You can also use an RTSP stream or a detected H.264 camera.
-3. In **Dashboard**, click **Add channel**, choose the source and model, then
-   click **Start**.
-
-You can rename channels, change their settings, pause/resume, stop, or delete
-them. Video-file channels also support seeking. Warehouses let you preview,
-rename, download, and delete assets.
-
-Use **H.264** for live browser playback. The engine can also decode 8-bit H.265,
-but playback still depends on your browser's codec support. Camera input
-currently requires H.264 over V4L2.
-
-This demo has **no login**. Run it on a trusted LAN: anyone who can reach the
-server can manage its channels and files.
-
-## Compare CPU and RGA preprocessing
-
-Edit a channel and switch its preprocessing mode between **RGA** and **CPU**.
-Use the same source, model, and inference settings for both runs.
-
-Only preprocessing changes. Both modes still use **MPP decoding and RKNN
-inference**, so CPU mode is not a CPU-only detector.
-
-| Dashboard value | What it tells you                           |
-| --------------- | ------------------------------------------- |
-| Video FPS       | Frames presented by your browser            |
-| Decode FPS      | Frames decoded by the board                 |
-| Inference FPS   | Frames processed by the model               |
-| Preprocess time | Time spent preparing an image for the model |
-
-Start with **Infer every N frames = 1**. If inference falls behind, the worker
-drops older analytics frames. The browser keeps playing the original video at
-its normal speed; it does not wait for detection results.
-
-### Parallel inference on multiple NPU cores
-
-Inference uses independent RKNN contexts to process different frames concurrently:
-**two workers on RK3576** and **three on RK3588**. Each worker owns its input DMA
-buffer, RGA preprocessor, and output tensors. Inference threads prefer the
-performance CPU cores within the process’s allowed CPU set. Results remain in
-frame order.
-Live queues stay bounded and drop the oldest queued frame when overloaded.
-
-The CLI configuration and channel API accept `inference_workers`:
-
-| Value | Behavior |
-| ----- | -------- |
-| `0` (default) | Detect the chip and use one worker per NPU core |
-| `1` | One context with the RKNN all-core mask, for comparison |
-
-The dashboard uses automatic selection. Stop a channel before changing its worker
-count through the API. Each channel has its own contexts and buffers; concurrent
-channels share NPU time and use more memory. The model inspector loads one context.
-
-YOLO class-score scanning also processes contiguous blocks of proposals to reduce
-CPU cache misses. Thresholds, class selection, box transforms, and NMS stay the same.
-
-### Example result on RK3588
-
-Measured with YOLO26n, 640×640 model input, and one 1080p H.264 RTSP source at
-approximately 30 FPS. Each mode ran separately for 15 seconds.
-
-| Mode              | Average preprocessing | Inference throughput |
-| ----------------- | --------------------- | -------------------- |
-| RGA               | 1.71 ms               | 29.8 FPS             |
-| CPU preprocessing | 44.39 ms              | 15.1 FPS             |
-
-Results depend on the model, source, board image, and concurrent workload.
-
-## Choose a compatible model
-
-Convert the model for the chip you will run it on: an RK3576 export should not
-be assumed to work on RK3588. Its metadata must describe the same image size
-and class names as the model.
-
-| Model           | Current status                                                                 |
-| --------------- | ------------------------------------------------------------------------------ |
-| YOLO26          | Tested on RK3588 with Rockchip's two-output scores/xyxy export                 |
-| YOLOv8 / YOLO11 | Compatible export layouts are implemented; YOLOv8 has not been board-validated |
-| YOLOv10         | Not yet validated; standard post-NMS end-to-end exports are unsupported        |
-
-The engine accepts batch-1 RGB detection models with one of these output layouts:
-
-- Decoded single-output YOLO.
-- Nine-output affine INT8 DFL.
-- Two-output YOLO26: sigmoid class scores and pixel-space xyxy boxes.
-
-Other layouts and tasks need additional postprocessing support. A model marked
-**Ready** has passed runtime loading and tensor checks; that does not measure
-its detection accuracy. RK3566 has not been validated.
-
-## If hardware access fails
-
-If you see an MPP/RGA permission error, check the device ownership and your groups:
-
-```bash
-ls -l /dev/mpp_service /dev/rga /dev/dri/renderD* /dev/dma_heap/*
-id
-```
-
-If MPP/RGA are root-only, these commands grant access to the `video` group:
-
-```bash
-sudo usermod -aG video "$USER"
-sudo chgrp video /dev/mpp_service /dev/rga
-sudo chmod g+rw /dev/mpp_service /dev/rga
-```
-
-Log out and back in if your group membership changed. Device permissions may
-reset after reboot; use your board image's udev rules for a permanent setup.
-Missing device nodes usually mean the board image or drivers need attention.
-
-## Files and recordings
-
-Your settings, uploads, recordings, and logs live in **`.local/state/`**.
-Builds, downloaded dependencies, and caches also live under `.local/`.
-
-- Do not delete all of `.local/` to clean a build.
-- Stop the server before backing up its state.
-- Asset deletion moves files to `.local/state/trash/`; it does not immediately
-  reclaim disk space. Remove channel references before deleting an asset.
-- There is no automatic recording retention or live-source reconnect.
-- The database stores absolute asset paths. Moving saved state to a different
-  project location requires updating those paths.
-
-## Build on an x86 Linux computer
-
-The Docker cross-build targets **Ubuntu 26.04 ARM64**:
-
-```bash
-./nvr cross-build
-```
-
-Copy `.local/dist/rockchip-yolo-cpp-ubuntu26-arm64.tar.gz` to a matching board:
-
-```bash
-tar -xzf rockchip-yolo-cpp-ubuntu26-arm64.tar.gz
-cd rockchip-yolo-cpp
-./nvr run
-```
-
-The package includes the binaries, web assets, and shared libraries. It excludes
-models and saved state. Install `ffmpeg` on the board if needed; video inspection
-uses `ffprobe`. Older OS releases need a matching cross-build environment or a
-native build.
-
-Set `JOBS=8` to adjust build parallelism. Use
-`CROSS_REBUILD_IMAGE=1 ./nvr cross-build` to refresh the cached Docker image.
-Optional `UBUNTU_MIRROR` and `UBUNTU_PORTS_MIRROR` select apt mirrors.
-
-## Find your way around the code
-
-| Path                  | Purpose                                                |
-| --------------------- | ------------------------------------------------------ |
-| `src/engine/`         | MPP decoding, preprocessing, RKNN inference, recording |
-| `src/worker/`         | Runs and controls one channel                          |
-| `src/server/`         | HTTP/WebSocket API, warehouses, SQLite storage         |
-| `web/`                | React dashboard                                        |
-| `tools/`              | Setup, build, and packaging scripts                    |
-| `config/example.json` | Configuration for the standalone CLI                   |
-
-Start with **`src/cli.cpp`** to follow the hardware pipeline. For the web app,
-start with **`src/server/main.cpp`** and **`web/src/App.tsx`**.
-
-C++ uses four spaces and Allman braces. `.clang-format` defines the C++ style.
-
-### Use the processing modules in another project
-
-Include this repository with CMake and link the engine:
+Link the processing library from another CMake project:
 
 ```cmake
 add_subdirectory(rockchip-yolo-cpp)
 target_link_libraries(my_app PRIVATE nvr::engine)
 ```
 
-Application targets are off by default when included this way. For a standalone
-library build, set `NVR_BUILD_APPS=OFF`. Set `ROCKCHIP_SDK` and `MPP_ROOT` as needed.
+Application targets are disabled by default when included this way.
 
-`engine/preprocess.hpp` accepts `Nv12ImageView` with image dimensions, strides,
-and borrowed DMA-BUF or mapped CPU storage. `engine/decoder.hpp` delivers
-frames with an optional packet callback; recording is optional.
-`engine/postprocess.hpp` accepts YOLO tensors and returns detections in source-image
-coordinates. It has no Rockchip, FFmpeg, or JSON dependency; link `nvr::postprocess` and set
-`NVR_BUILD_ENGINE=OFF` to build only that module on other platforms.
+| Interface | Purpose |
+| --- | --- |
+| [decoder.hpp](src/engine/decoder.hpp) | MPP decoding with frame and optional packet callbacks |
+| [preprocess.hpp](src/engine/preprocess.hpp) | RGA/CPU preprocessing from borrowed NV12 image buffers |
+| [detector_pool.hpp](src/engine/detector_pool.hpp) | Ordered inference across independent RKNN contexts |
+| [postprocess.hpp](src/engine/postprocess.hpp) | YOLO tensor decoding, NMS, and source-image box coordinates |
 
-### Other commands
+For portable postprocessing only, set `NVR_BUILD_ENGINE=OFF` and link
+`nvr::postprocess`. It needs neither the Rockchip SDK nor FFmpeg.
+For a standalone hardware library build, set `NVR_BUILD_APPS=OFF`.
 
-```bash
-./nvr setup                              # Prepare dependencies
-./nvr build --cli-only                   # Skip the web server/frontend
-./nvr inspect /absolute/path/model.rknn   # Inspect model tensors
-./nvr cli config/example.json            # Run the CLI after editing the example
-```
+Channel orchestration lives in `src/worker/`, HTTP/WebSocket APIs in `src/server/`,
+and the dashboard in `web/`. Start with [src/cli.cpp](src/cli.cpp) to follow the pipeline.
+C++ changes should follow `.clang-format` and be validated on the affected boards.
 
-To use existing SDKs, set `ROCKCHIP_SDK` to a directory containing `rga/` and
-`rknn/`, and/or set `MPP_ROOT` to an MPP installation.
+## Data and limitations
+
+- Settings, uploads, recordings, and logs are stored in **`.local/state/`**. Preserve this directory when cleaning builds or upgrading.
+- There is no automatic RTSP reconnect or recording retention. Monitor recording disk usage.
+- Hardware access requires read/write permissions for the board's MPP, RGA, NPU/render, and DMA-heap devices.
+
+When reporting a problem, include the board, OS, RKNN runtime/driver versions,
+model export details, and relevant logs. Do not include camera credentials.
