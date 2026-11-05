@@ -1,6 +1,12 @@
 #pragma once
 
-#include "engine/pipeline.hpp"
+#include "engine/dma_buffer.hpp"
+#include "engine/frame.hpp"
+
+#include <map>
+#include <memory>
+#include <vector>
+#include <im2d.hpp>
 
 namespace nvr
 {
@@ -19,7 +25,11 @@ class JpegPreview
     void initialize(int width, int height);
 
 public:
+    JpegPreview() = default;
     ~JpegPreview();
+
+    JpegPreview(const JpegPreview &) = delete;
+    JpegPreview &operator=(const JpegPreview &) = delete;
 
     std::vector<uint8_t> encode(const Frame &frame);
 };

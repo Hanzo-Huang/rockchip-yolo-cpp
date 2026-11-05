@@ -1,4 +1,11 @@
 #include "worker/control.hpp"
+#include "engine/decoder.hpp"
+#include "engine/detector_pool.hpp"
+#include "engine/recorder.hpp"
+
+#include <algorithm>
+#include <fstream>
+#include <thread>
 #include "engine/jpeg_preview.hpp"
 #include "engine/mp4_stream.hpp"
 
@@ -105,19 +112,20 @@ int run_worker(const Json &config)
                              ("epoch-" + std::to_string(epoch));
             std::filesystem::create_directories(directory);
 
-            std::unique_ptr<Detector> detector;
+            std::unique_ptr<DetectorPool> detector;
             if (!config.value("preview_only", false))
             {
-                detector = std::make_unique<Detector>(
+                detector = std::make_unique<DetectorPool>(
                     config.at("model"), config.value("preprocess", std::string("rga")), false,
-                    config.value("confidence", 0.35f), config.value("nms_iou", 0.45f));
+                    config.value("confidence", 0.35f), config.value("nms_iou", 0.45f),
+                    config.value("inference_workers", 0));
             }
             // Declare after decoder: release imported handles and frames before MPP.
             std::unique_ptr<JpegPreview> preview;
             // Reordered live video releases several frames together. A one-frame
             // queue throws away work even when the NPU can finish before the next
             // burst. Keep only a small burst; full queues still drop the oldest frame.
-            auto queue = std::make_shared<FrameQueue>(control.file ? 1 : 6);
+            auto queue = std::make_shared<FrameQueue>(control.file ? 1 : 8);
             // Live decoders can release several reordered pictures in one burst.
             // Retain a small bounded jitter buffer, not an ever-growing backlog.
             auto preview_queue = std::make_shared<FrameQueue>(control.file ? 1 : 8);
@@ -220,64 +228,59 @@ int run_worker(const Json &config)
                     {
                         std::ofstream events(directory / "detections.jsonl");
                         require(bool(events), "open detection log");
-                        while (auto frame = queue->pop())
+                        if (detector)
                         {
-                            if (control.epoch_stop || control.stop)
-                            {
-                                break;
-                            }
-                            if (control.file && control.paused && !frame->preview_step)
-                            {
-                                continue;
-                            }
-                            Json result = {{"frame", frame->sequence},
-                                           {"pts_us", frame->pts_us},
-                                           {"detections", Json::array()},
-                                           {"source_width", mpp_frame_get_width(frame->value)},
-                                           {"source_height", mpp_frame_get_height(frame->value)}};
-                            if (detector && (!control.paused || control.file))
-                            {
-                                result = detector->infer(*frame);
-                                ++inferred;
-                                result["run_id"] = config.at("run_id");
-                                result["epoch"] = epoch;
+                            detector->run(
+                                *queue,
+                                [&](const Frame &frame)
                                 {
-                                    std::lock_guard<std::mutex> lock(control.output_mutex);
-                                    auto event = result;
-                                    event["type"] = "detections";
-                                    std::cout << event.dump() << std::endl;
-                                }
-                                events << result.dump() << '\n';
-                                require(bool(events), "write detection log");
+                                    return !control.epoch_stop && !control.stop &&
+                                           (!control.paused ||
+                                            (control.file && frame.preview_step));
+                                },
+                                [&](const Frame &frame, Json result)
                                 {
-                                    std::lock_guard<std::mutex> lock(detection_mutex);
-                                    latest_detection = result;
-                                    detection_history.push_back(result);
-                                    if (detection_history.size() > 32)
+                                    ++inferred;
+                                    result["run_id"] = config.at("run_id");
+                                    result["epoch"] = epoch;
                                     {
-                                        detection_history.pop_front();
+                                        std::lock_guard<std::mutex> lock(control.output_mutex);
+                                        auto event = result;
+                                        event["type"] = "detections";
+                                        std::cout << event.dump() << std::endl;
                                     }
-                                }
-                                detection_ready.notify_all();
-                            }
-                            if (control.epoch_stop ||
-                                (control.file && control.paused && !frame->preview_step))
-                            {
-                                continue;
-                            }
-                            double elapsed = std::max(0.001, milliseconds(started) / 1000);
-                            control.update({{"decoded", decoded.load()},
-                                            {"inferred", inferred.load()},
-                                            {"queue_drops", queue->dropped.load()},
-                                            {"decode_fps", double(decoded) / elapsed},
-                                            {"inference_fps", double(inferred) / elapsed},
-                                            {"preprocess_ms", result.value("preprocess_ms", 0.0)},
-                                            {"inference_ms", result.value("inference_ms", 0.0)},
-                                            {"rknn_run_ms", result.value("rknn_run_ms", 0.0)},
-                                            {"output_get_ms", result.value("output_get_ms", 0.0)},
-                                            {"postprocess_ms", result.value("postprocess_ms", 0.0)},
-                                            {"age_ms", result.value("age_ms", 0.0)},
-                                            {"objects", result["detections"].size()}});
+                                    events << result.dump() << '\n';
+                                    require(bool(events), "write detection log");
+                                    {
+                                        std::lock_guard<std::mutex> lock(detection_mutex);
+                                        latest_detection = result;
+                                        detection_history.push_back(result);
+                                        if (detection_history.size() > 32)
+                                        {
+                                            detection_history.pop_front();
+                                        }
+                                    }
+                                    detection_ready.notify_all();
+                                    if (control.epoch_stop ||
+                                        (control.file && control.paused && !frame.preview_step))
+                                    {
+                                        return;
+                                    }
+                                    double elapsed = std::max(0.001, milliseconds(started) / 1000);
+                                    control.update(
+                                        {{"decoded", decoded.load()},
+                                         {"inferred", inferred.load()},
+                                         {"queue_drops", queue->dropped.load()},
+                                         {"decode_fps", double(decoded) / elapsed},
+                                         {"inference_fps", double(inferred) / elapsed},
+                                         {"preprocess_ms", result.value("preprocess_ms", 0.0)},
+                                         {"inference_ms", result.value("inference_ms", 0.0)},
+                                         {"rknn_run_ms", result.value("rknn_run_ms", 0.0)},
+                                         {"output_get_ms", result.value("output_get_ms", 0.0)},
+                                         {"postprocess_ms", result.value("postprocess_ms", 0.0)},
+                                         {"age_ms", result.value("age_ms", 0.0)},
+                                         {"objects", result["detections"].size()}});
+                                });
                         }
                         events.flush();
                     }

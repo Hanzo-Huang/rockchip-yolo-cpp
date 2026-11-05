@@ -1,53 +1,21 @@
-#include "engine/pipeline.hpp"
+#include "engine/preprocess.hpp"
+#include "engine/common.hpp"
 
-#include <cmath>
 #include <cstring>
-#include <fcntl.h>
 #include <sys/ioctl.h>
-#include <sys/mman.h>
-#include <unistd.h>
-#include <linux/dma-heap.h>
 #include <linux/dma-buf.h>
 
 namespace nvr
 {
-// Shared DMA buffer ownership.
-DmaBuffer::DmaBuffer(size_t requested) : size((requested + 4095) & ~size_t(4095))
-{
-    int heap = open("/dev/dma_heap/system-uncached", O_RDWR | O_CLOEXEC);
-    require(heap >= 0, "open system-uncached DMA heap (check render group permissions)");
-    dma_heap_allocation_data request{};
-    request.len = size;
-    request.fd_flags = O_RDWR | O_CLOEXEC;
-    int rc = ioctl(heap, DMA_HEAP_IOCTL_ALLOC, &request);
-    close(heap);
-    require(rc == 0, "allocate uncached DMA-BUF");
-    fd = static_cast<int>(request.fd);
-    data = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if (data == MAP_FAILED)
-    {
-        close(fd);
-        fd = -1;
-        throw std::runtime_error("map DMA-BUF");
-    }
-}
-
-DmaBuffer::~DmaBuffer()
-{
-    if (data && data != MAP_FAILED)
-    {
-        munmap(data, size);
-    }
-    if (fd >= 0)
-    {
-        close(fd);
-    }
-}
-
 // Model input resizing and color conversion.
 Preprocessor::Preprocessor(DmaBuffer &input, int w, int h, int stride, const std::string &mode)
     : width_(w), height_(h), stride_(stride), input_(input), mode_(mode)
 {
+    require(mode_ == "rga" || mode_ == "cpu", "preprocess must be rga or cpu");
+    require(w > 0 && h > 0 && w % 16 == 0 && h % 2 == 0 && stride >= w && stride % 16 == 0,
+            "invalid RGB destination dimensions or stride");
+    require(input.fd >= 0 && input.data && input.size >= size_t(stride) * size_t(h) * 3,
+            "invalid RGB destination DMA buffer");
     if (mode_ == "rga")
     {
         destination_ = importbuffer_fd(input_.fd, static_cast<int>(input_.size));
@@ -61,53 +29,44 @@ Preprocessor::~Preprocessor()
     {
         releasebuffer_handle(destination_);
     }
-    for (auto &item : sources_)
-    {
-        releasebuffer_handle(item.second.handle);
-    }
+    clear_sources();
     if (sws_)
     {
         sws_freeContext(sws_);
     }
 }
 
-Geometry Preprocessor::process(const Frame &f)
+void Preprocessor::clear_sources()
 {
-    auto raw = f.value;
-    Geometry g;
-    g.width = static_cast<int>(mpp_frame_get_width(raw));
-    g.height = static_cast<int>(mpp_frame_get_height(raw));
-    int hs = static_cast<int>(mpp_frame_get_hor_stride(raw)),
-        vs = static_cast<int>(mpp_frame_get_ver_stride(raw));
-    require(mpp_frame_get_fmt(raw) == MPP_FMT_YUV420SP, "expected linear NV12 from MPP");
-    require(g.width > 0 && g.height > 0 && hs >= g.width && vs >= g.height,
-            "invalid MPP frame strides");
+    for (auto &item : sources_)
+    {
+        releasebuffer_handle(item.second);
+    }
+    sources_.clear();
+}
 
-    g.scale = std::min(float(width_) / float(g.width), float(height_) / float(g.height));
-    // Even letterbox rectangles also satisfy NV12 chroma alignment requirements.
-    g.rw = std::max(2, int(std::round(float(g.width) * g.scale)) & ~1);
-    g.rh = std::max(2, int(std::round(float(g.height) * g.scale)) & ~1);
-    g.px = ((width_ - g.rw) / 2) & ~1;
-    g.py = ((height_ - g.rh) / 2) & ~1;
-
-    MppBuffer buffer = mpp_frame_get_buffer(raw);
-    require(buffer && mpp_buffer_get_size(buffer) >= size_t(hs) * size_t(vs) * 3 / 2,
-            "invalid MPP frame buffer");
+Geometry Preprocessor::process(const Nv12ImageView &image)
+{
+    const int hs = image.horizontal_stride, vs = image.vertical_stride;
+    require(image.width > 0 && image.height > 0 && hs >= image.width && vs >= image.height,
+            "invalid NV12 image strides");
+    require(image.size >= size_t(hs) * size_t(vs) * 3 / 2, "invalid NV12 image buffer size");
+    const auto g = letterbox_geometry(image.width, image.height, width_, height_);
 
     if (mode_ == "rga")
     {
-        int fd = mpp_buffer_get_fd(buffer);
+        int fd = image.fd;
+        require(fd >= 0, "RGA preprocessing needs a DMA-BUF file descriptor");
         auto found = sources_.find(fd);
         if (found == sources_.end())
         {
             require(sources_.size() < 96,
                     "source buffer cache limit exceeded (reconnect required)");
-            auto handle = importbuffer_fd(fd, static_cast<int>(mpp_buffer_get_size(buffer)));
-            // RGA's import owns its DMA-BUF attachment. Do not retain an MppBuffer
-            // reference here: that would prevent recycling the decoder's frame pool.
-            // The Frame owns the MppFrame throughout synchronous preprocessing.
-            require(handle != 0, "RGA import MPP DMA-BUF");
-            found = sources_.emplace(fd, Source{handle, buffer}).first;
+            auto handle = importbuffer_fd(fd, static_cast<int>(image.size));
+            // The import owns its DMA-BUF attachment. The caller retains the source
+            // during processing; no decoder-specific buffer reference is stored.
+            require(handle != 0, "RGA import NV12 DMA-BUF");
+            found = sources_.emplace(fd, handle).first;
         }
         auto dst =
             wrapbuffer_handle_t(destination_, width_, height_, stride_, height_, RK_FORMAT_RGB_888);
@@ -128,8 +87,8 @@ Geometry Preprocessor::process(const Frame &f)
             painted_ = true;
             previous_ = g;
         }
-        auto src = wrapbuffer_handle_t(found->second.handle, g.width, g.height, hs, vs,
-                                       RK_FORMAT_YCbCr_420_SP);
+        auto src =
+            wrapbuffer_handle_t(found->second, g.width, g.height, hs, vs, RK_FORMAT_YCbCr_420_SP);
         // A single synchronous hardware job resizes, converts NV12->RGB and writes
         // directly into RKNN-bound DMA memory. No full-frame CPU pixel copy.
         auto status = improcess(src, dst, {}, im_rect{0, 0, g.width, g.height},
@@ -139,15 +98,18 @@ Geometry Preprocessor::process(const Frame &f)
     }
     else
     {
-        int fd = mpp_buffer_get_fd(buffer);
+        int fd = image.fd;
         dma_buf_sync sync{};
         sync.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_READ;
-        require(ioctl(fd, DMA_BUF_IOCTL_SYNC, &sync) == 0, "sync MPP frame for CPU read");
-        const auto *base = static_cast<const uint8_t *>(mpp_buffer_get_ptr(buffer));
-        require(base, "map MPP frame for CPU baseline");
+        if (fd >= 0)
+        {
+            require(ioctl(fd, DMA_BUF_IOCTL_SYNC, &sync) == 0, "sync image for CPU read");
+        }
+        const auto *base = image.data;
+        require(base, "CPU preprocessing needs mapped NV12 storage");
         // swscale writes much faster into cacheable memory than an uncached DMA
         // mapping. Use a reusable scratch tensor, then one linear upload. This
-        // makes the CPU comparison an optimized baseline, not a straw man.
+        // avoids repeatedly writing scaled pixels into uncached memory.
         if (cpu_output_.size() != input_.size)
         {
             cpu_output_.resize(input_.size);
@@ -163,7 +125,10 @@ Geometry Preprocessor::process(const Frame &f)
         int out_lines[4] = {stride_ * 3, 0, 0, 0};
         int rows = sws_scale(sws_, planes, lines, 0, g.height, out, out_lines);
         sync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_READ;
-        require(ioctl(fd, DMA_BUF_IOCTL_SYNC, &sync) == 0, "end CPU frame read");
+        if (fd >= 0)
+        {
+            require(ioctl(fd, DMA_BUF_IOCTL_SYNC, &sync) == 0, "end CPU image read");
+        }
         require(rows == g.rh, "CPU scaler incomplete frame");
         std::memcpy(input_.data, cpu_output_.data(), input_.size);
     }

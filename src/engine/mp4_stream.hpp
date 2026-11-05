@@ -1,6 +1,11 @@
 #pragma once
 
-#include "engine/pipeline.hpp"
+#include "engine/media.hpp"
+#include "engine/json.hpp"
+
+#include <functional>
+#include <string>
+#include <vector>
 
 namespace nvr
 {
@@ -30,6 +35,9 @@ public:
     Mp4Stream(const AVCodecParameters *, AVRational,
               std::function<void(const Json &, const std::vector<uint8_t> &)>);
     ~Mp4Stream();
+
+    Mp4Stream(const Mp4Stream &) = delete;
+    Mp4Stream &operator=(const Mp4Stream &) = delete;
 
     void packet(const AVPacket *);
 };

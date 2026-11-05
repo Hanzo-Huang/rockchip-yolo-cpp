@@ -201,18 +201,24 @@ Json Application::save_channel(const Json &input, const std::string &id)
     check(preprocessing == "rga" || preprocessing == "cpu", "Invalid preprocessing mode");
     int every = values.value("detect_every", 1);
     check(every >= 1 && every <= 30, "Inference interval must be 1–30");
+    int workers = values.value(
+        "inference_workers", editing ? existing["config"].value("inference_workers", 0) : 0);
+    check(workers == 0 || workers == 1, "Inference workers must be 0 (auto) or 1 (single context)");
     double confidence = values.value("confidence", 0.35), iou = values.value("nms_iou", 0.45);
     check(std::isfinite(confidence) && confidence > 0 && confidence < 1 && std::isfinite(iou) &&
               iou > 0 && iou < 1,
           "Invalid detection thresholds");
     config.update({{"preprocess", preprocessing},
                    {"detect_every", every},
+                   {"inference_workers", workers},
                    {"confidence", confidence},
                    {"nms_iou", iou},
                    {"recording", values.value("recording", type != "file")}});
     if (editing && supervisor.active(id))
     {
-        check(config == existing["config"] && channel["video_id"] == existing["video_id"] &&
+        auto previous_config = existing["config"];
+        previous_config["inference_workers"] = previous_config.value("inference_workers", 0);
+        check(config == previous_config && channel["video_id"] == existing["video_id"] &&
                   channel["model_id"] == existing["model_id"],
               "Stop the channel before changing its source, model or processing settings", 409);
     }

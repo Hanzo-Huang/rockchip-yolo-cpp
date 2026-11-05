@@ -1,4 +1,6 @@
-#include "engine/pipeline.hpp"
+#include "engine/detector.hpp"
+
+#include <fstream>
 
 #include <algorithm>
 #include <cmath>
@@ -8,8 +10,8 @@
 namespace nvr
 {
 Detector::Detector(const std::string &model, const std::string &mode, bool verify, float threshold,
-                   float iou)
-    : verify_(verify), threshold_(threshold), iou_(iou), mode_(mode)
+                   float iou, rknn_core_mask core_mask)
+    : verify_(verify), mode_(mode)
 {
     try
     {
@@ -20,7 +22,7 @@ Detector::Detector(const std::string &model, const std::string &mode, bool verif
         require(rknn_init(&context_, bytes.data(), static_cast<uint32_t>(bytes.size()), 0,
                           nullptr) == RKNN_SUCC,
                 "initialize RKNN model");
-        require(rknn_set_core_mask(context_, RKNN_NPU_CORE_ALL) == 0, "enable available NPU cores");
+        require(rknn_set_core_mask(context_, core_mask) == 0, "enable available NPU cores");
 
         // Validate the model input contract before allocating hardware buffers.
         rknn_input_output_num io{};
@@ -137,6 +139,31 @@ Detector::Detector(const std::string &model, const std::string &mode, bool verif
                     "unsupported YOLO output layout");
         }
 
+        YoloLayout layout;
+        layout.kind = dfl_     ? YoloLayout::Kind::Dfl
+                      : split_ ? YoloLayout::Kind::ScoresAndBoxes
+                               : YoloLayout::Kind::Decoded;
+        layout.input_width = width_;
+        layout.input_height = height_;
+        layout.classes = features_ - 4;
+        layout.proposals = proposals_;
+        layout.features_first = features_first_;
+        layout.scores_first = scores_first_;
+        layout.boxes_first = boxes_first_;
+        if (dfl_)
+        {
+            for (size_t branch = 0; branch < layout.grids.size(); ++branch)
+            {
+                const auto &boxes = output_attrs_[branch * 3];
+                const auto &scores = output_attrs_[branch * 3 + 1];
+                const auto &sums = output_attrs_[branch * 3 + 2];
+                layout.grids[branch] = {
+                    int(boxes.dims[3]), int(boxes.dims[2]), boxes.zp,  scores.zp, sums.zp,
+                    boxes.scale,        scores.scale,       sums.scale};
+            }
+        }
+        postprocessor_ = std::make_unique<YoloPostprocessor>(layout, threshold, iou);
+
         // Share one RGB DMA buffer between RGA preprocessing and RKNN input.
         stride_ = input_attr_.w_stride ? static_cast<int>(input_attr_.w_stride) : width_;
         require(stride_ >= width_ && stride_ % 16 == 0, "unsupported RKNN width stride");
@@ -159,20 +186,21 @@ Detector::Detector(const std::string &model, const std::string &mode, bool verif
         rknn_sdk_version version{};
         require(rknn_query(context_, RKNN_QUERY_SDK_VERSION, &version, sizeof(version)) == 0,
                 "query RKNN version");
-        description = {{"runtime", version.api_version},
-                       {"driver", version.drv_version},
-                       {"input_width", width_},
-                       {"input_height", height_},
-                       {"input_stride", stride_},
-                       {"classes", features_ - 4},
-                       {"proposals", proposals_},
-                       {"preprocess", mode_},
-                       {"output_type", get_type_string(output_attr_.type)},
-                       {"postprocessor", dfl_     ? "INT8 DFL (9 outputs)"
-                                         : split_ ? "YOLO26 scores/xyxy (2 outputs; no NMS)"
-                                                  : "decoded YOLO (1 output)"},
-                       {"core_mask", "all"},
-                       {"input_api", "rknn_create_mem_from_fd + rknn_set_io_mem"}};
+        description = {
+            {"runtime", version.api_version},
+            {"driver", version.drv_version},
+            {"input_width", width_},
+            {"input_height", height_},
+            {"input_stride", stride_},
+            {"classes", features_ - 4},
+            {"proposals", proposals_},
+            {"preprocess", mode_},
+            {"output_type", get_type_string(output_attr_.type)},
+            {"postprocessor", dfl_     ? "INT8 DFL (9 outputs)"
+                              : split_ ? "YOLO26 scores/xyxy (2 outputs; no NMS)"
+                                       : "decoded YOLO (1 output)"},
+            {"core_mask", core_mask == RKNN_NPU_CORE_ALL ? Json("all") : Json(int(core_mask))},
+            {"input_api", "rknn_create_mem_from_fd + rknn_set_io_mem"}};
     }
     catch (...)
     {
@@ -279,7 +307,7 @@ void Detector::run_output(bool copy_input)
 Json Detector::infer(const Frame &f)
 {
     auto pre = Clock::now();
-    auto geometry = preprocessor_->process(f);
+    auto geometry = preprocessor_->process(f.image());
     double pre_ms = milliseconds(pre);
     auto start = Clock::now();
     run_output(false);
@@ -316,7 +344,13 @@ Json Detector::infer(const Frame &f)
         verification = {{"passed", true}, {"max_abs_error", max_error}};
     }
     auto post = Clock::now();
-    Json detections = decode(geometry);
+    Json detections = Json::array();
+    for (const auto &detection : postprocessor_->decode(geometry, output_, quant_outputs_))
+    {
+        detections.push_back({{"class_id", detection.class_id},
+                              {"confidence", detection.confidence},
+                              {"box", detection.box}});
+    }
     double post_ms = milliseconds(post);
     return Json{{"frame", f.sequence},
                 {"pts_us", f.pts_us},
@@ -332,199 +366,4 @@ Json Detector::infer(const Frame &f)
                 {"detections", detections}};
 }
 
-Json Detector::decode(const Geometry &g)
-{
-    struct Box
-    {
-        float x, y, w, h, score;
-        int cls;
-    };
-
-    std::vector<Box> candidates;
-    auto value = [&](int p, int f)
-    {
-        return output_[features_first_ ? size_t(f) * proposals_ + p : size_t(p) * features_ + f];
-    };
-    if (dfl_)
-    {
-        for (int branch = 0; branch < 3; ++branch)
-        {
-            const auto &reg = output_attrs_[size_t(branch) * 3];
-            const auto &scores = output_attrs_[size_t(branch) * 3 + 1];
-            const auto &r = quant_outputs_[size_t(branch) * 3];
-            const auto &s = quant_outputs_[size_t(branch) * 3 + 1];
-            const auto &sums = output_attrs_[size_t(branch) * 3 + 2];
-            const auto &sums_data = quant_outputs_[size_t(branch) * 3 + 2];
-            int gh = int(reg.dims[2]), gw = int(reg.dims[3]), cells = gh * gw, stride = width_ / gw;
-            for (int p = 0; p < cells; ++p)
-            {
-                // The model-zoo sum head bounds the maximum class probability. Leave
-                // one quantization step of margin to avoid filtering borderline hits.
-                if (float(int(sums_data[size_t(p)]) - sums.zp) * sums.scale + sums.scale <
-                    threshold_)
-                {
-                    continue;
-                }
-                int best = -128, cls = -1;
-                for (int c = 0; c < features_ - 4; ++c)
-                {
-                    int score = s[size_t(c) * cells + p];
-                    if (score > best)
-                    {
-                        best = score;
-                        cls = c;
-                    }
-                }
-                float probability = float(best - scores.zp) * scores.scale;
-                if (cls < 0 || probability < threshold_)
-                {
-                    continue;
-                }
-                float distances[4]{};
-                for (int side = 0; side < 4; ++side)
-                {
-                    float logits[16], max_logit = -1e30f;
-                    for (int bin = 0; bin < 16; ++bin)
-                    {
-                        float x =
-                            float(int(r[size_t(side * 16 + bin) * cells + p]) - reg.zp) * reg.scale;
-                        logits[bin] = x;
-                        max_logit = std::max(max_logit, x);
-                    }
-                    float total = 0, weighted = 0;
-                    for (int bin = 0; bin < 16; ++bin)
-                    {
-                        float weight = std::exp(logits[bin] - max_logit);
-                        total += weight;
-                        weighted += float(bin) * weight;
-                    }
-                    distances[side] = weighted / total * float(stride);
-                }
-                float cx = (float(p % gw) + 0.5f) * float(stride),
-                      cy = (float(p / gw) + 0.5f) * float(stride);
-                candidates.push_back({cx - distances[0], cy - distances[1],
-                                      distances[0] + distances[2], distances[1] + distances[3],
-                                      probability, cls});
-            }
-        }
-    }
-    else if (split_)
-    {
-        // Rockchip's truncated one2one head already supplies sigmoid probabilities
-        // and pixel-space xyxy boxes. Select TopK; do not apply a second NMS.
-        const auto *boxes = output_.data() + size_t(features_ - 4) * size_t(proposals_);
-        for (int p = 0; p < proposals_; ++p)
-        {
-            float best = threshold_;
-            int cls = -1;
-            for (int c = 0; c < features_ - 4; ++c)
-            {
-                float score = output_[scores_first_ ? size_t(c) * proposals_ + p
-                                                    : size_t(p) * (features_ - 4) + c];
-                if (std::isfinite(score) && score > best)
-                {
-                    best = score;
-                    cls = c;
-                }
-            }
-            if (cls < 0)
-            {
-                continue;
-            }
-            auto corner = [&](int c)
-            {
-                return boxes[boxes_first_ ? size_t(c) * proposals_ + p : size_t(p) * 4 + c];
-            };
-            float x = corner(0), y = corner(1), w = corner(2) - x, h = corner(3) - y;
-            if (std::isfinite(x) && std::isfinite(y) && std::isfinite(w) && std::isfinite(h) &&
-                w > 0 && h > 0)
-            {
-                candidates.push_back({x, y, w, h, best, cls});
-            }
-        }
-    }
-    else
-    {
-        for (int p = 0; p < proposals_; ++p)
-        {
-            float best = threshold_;
-            int cls = -1;
-            for (int c = 4; c < features_; ++c)
-            {
-                float score = value(p, c);
-                if (std::isfinite(score) && score > best)
-                {
-                    best = score;
-                    cls = c - 4;
-                }
-            }
-            if (cls < 0)
-            {
-                continue;
-            }
-            float w = value(p, 2), h = value(p, 3), x = value(p, 0) - w / 2,
-                  y = value(p, 1) - h / 2;
-            if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(w) || !std::isfinite(h) ||
-                w <= 0 || h <= 0)
-            {
-                continue;
-            }
-            candidates.push_back({x, y, w, h, best, cls});
-        }
-    }
-    std::sort(candidates.begin(), candidates.end(),
-              [](const Box &a, const Box &b)
-              {
-                  return a.score > b.score;
-              });
-    if (candidates.size() > 1000)
-    {
-        candidates.resize(1000);
-    }
-    std::vector<Box> kept;
-    Json result = Json::array();
-    for (const auto &a : candidates)
-    {
-        bool suppressed = false;
-        if (!split_)
-        {
-            for (const auto &b : kept)
-            {
-                if (a.cls != b.cls)
-                {
-                    continue;
-                }
-                float iw = std::max(0.f, std::min(a.x + a.w, b.x + b.w) - std::max(a.x, b.x));
-                float ih = std::max(0.f, std::min(a.y + a.h, b.y + b.h) - std::max(a.y, b.y));
-                float inter = iw * ih, uni = a.w * a.h + b.w * b.h - inter;
-                if (uni > 0 && inter / uni > iou_)
-                {
-                    suppressed = true;
-                    break;
-                }
-            }
-        }
-        if (suppressed)
-        {
-            continue;
-        }
-        kept.push_back(a);
-        // Use the actual even resized dimensions to undo the RGA letterbox.
-        float sx = float(g.width) / float(g.rw), sy = float(g.height) / float(g.rh);
-        float x1 = std::clamp((a.x - float(g.px)) * sx, 0.f, float(g.width));
-        float y1 = std::clamp((a.y - float(g.py)) * sy, 0.f, float(g.height));
-        float x2 = std::clamp((a.x + a.w - float(g.px)) * sx, 0.f, float(g.width));
-        float y2 = std::clamp((a.y + a.h - float(g.py)) * sy, 0.f, float(g.height));
-        if (x2 > x1 && y2 > y1)
-        {
-            result.push_back(
-                {{"class_id", a.cls}, {"confidence", a.score}, {"box", {x1, y1, x2, y2}}});
-        }
-        if (kept.size() >= 300)
-        {
-            break;
-        }
-    }
-    return result;
-}
 } // namespace nvr

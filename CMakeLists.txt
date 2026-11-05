@@ -11,7 +11,25 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
+# Build libraries alone when included by another project.
+set(NVR_STANDALONE OFF)
+if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
+    set(NVR_STANDALONE ON)
+endif()
+option(NVR_BUILD_ENGINE "Build the Rockchip hardware pipeline" ON)
+option(NVR_BUILD_APPS "Build the command-line and worker applications" ${NVR_STANDALONE})
 option(NVR_BUILD_WEB "Build the demo web server" ON)
+
+# Portable postprocessing has no Rockchip, FFmpeg, or JSON dependency.
+add_library(nvr-postprocess STATIC src/engine/geometry.cpp src/engine/postprocess.cpp)
+add_library(nvr::postprocess ALIAS nvr-postprocess)
+target_include_directories(nvr-postprocess PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_features(nvr-postprocess PUBLIC cxx_std_17)
+target_compile_options(nvr-postprocess PRIVATE -Wall -Wextra -Wconversion -Wno-sign-conversion)
+
+if(NOT NVR_BUILD_ENGINE)
+    return()
+endif()
 
 # Shared dependencies.
 find_package(Threads REQUIRED)
@@ -26,7 +44,6 @@ pkg_check_modules(
     libavcodec
     libavutil
     libswscale)
-pkg_check_modules(AVDEVICE REQUIRED IMPORTED_TARGET libavdevice)
 
 # Rockchip SDK headers and libraries.
 set(ROCKCHIP_SDK
@@ -55,14 +72,29 @@ find_path(
 find_library(MPP_LIB rockchip_mpp HINTS ${MPP_ROOT}/lib REQUIRED)
 
 # Hardware pipeline shared by the CLI and channel worker.
-add_library(nvr-engine STATIC src/engine/decoder.cpp src/engine/recorder.cpp
-                              src/engine/detector.cpp src/engine/preprocess.cpp)
+add_library(
+    nvr-engine STATIC
+    src/engine/frame.cpp
+    src/engine/frame_queue.cpp
+    src/engine/dma_buffer.cpp
+    src/engine/decoder.cpp
+    src/engine/recorder.cpp
+    src/engine/preprocess.cpp
+    src/engine/detector.cpp
+    src/engine/detector_pool.cpp
+    src/engine/jpeg_preview.cpp
+    src/engine/mp4_stream.cpp)
+add_library(nvr::engine ALIAS nvr-engine)
 
-target_include_directories(nvr-engine PUBLIC src)
+target_include_directories(nvr-engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_include_directories(nvr-engine SYSTEM PUBLIC ${RGA_INCLUDE} ${RKNN_INCLUDE} ${MPP_INCLUDE})
 target_compile_options(nvr-engine PRIVATE -Wall -Wextra -Wconversion -Wno-sign-conversion)
-target_link_libraries(nvr-engine PUBLIC PkgConfig::AV Threads::Threads nlohmann_json::nlohmann_json
-                                        ${RGA_LIB} ${RKNN_LIB} ${MPP_LIB})
+target_link_libraries(nvr-engine PUBLIC nvr::postprocess PkgConfig::AV Threads::Threads
+                                       nlohmann_json::nlohmann_json ${RGA_LIB} ${RKNN_LIB} ${MPP_LIB})
+
+if(NOT NVR_BUILD_APPS)
+    return()
+endif()
 
 # Standalone command-line application.
 add_executable(rk-nvr src/cli.cpp)
@@ -71,8 +103,8 @@ target_link_libraries(rk-nvr PRIVATE nvr-engine)
 install(TARGETS rk-nvr RUNTIME DESTINATION bin)
 
 # Per-channel worker and browser video transport.
-add_executable(rk-nvr-worker src/worker/main.cpp src/worker/control.cpp src/worker/runtime.cpp
-                             src/engine/jpeg_preview.cpp src/engine/mp4_stream.cpp)
+pkg_check_modules(AVDEVICE REQUIRED IMPORTED_TARGET libavdevice)
+add_executable(rk-nvr-worker src/worker/main.cpp src/worker/control.cpp src/worker/runtime.cpp)
 target_link_libraries(rk-nvr-worker PRIVATE nvr-engine PkgConfig::AVDEVICE)
 
 # Model inspection runs in a separate process from the server.

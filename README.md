@@ -21,7 +21,25 @@ a 1080p video file.
 ## Get started
 
 Use a Debian/Ubuntu board image with working **MPP, RGA, and RKNPU drivers**.
-Run these commands on the board:
+
+### Use a prebuilt release
+
+Download the Ubuntu 26.04 ARM64 runtime archive from
+[Releases](https://github.com/Hanzo-Huang/rockchip-yolo-cpp/releases). It supports
+RK3576 and RK3588 boards with compatible drivers. Extract the archive and run:
+
+```bash
+cd rockchip-yolo-cpp
+./nvr run
+```
+
+Keep the extracted directory together: it contains the executables, shared
+libraries, and web frontend. Models are uploaded separately. Install the
+`ffmpeg` package if `ffprobe` is missing; model and video inspection use it.
+
+### Build from source
+
+Run these commands on the board if you want to compile the application:
 
 ```bash
 cd rockchip-yolo-cpp
@@ -83,6 +101,29 @@ inference**, so CPU mode is not a CPU-only detector.
 Start with **Infer every N frames = 1**. If inference falls behind, the worker
 drops older analytics frames. The browser keeps playing the original video at
 its normal speed; it does not wait for detection results.
+
+### Parallel inference on multiple NPU cores
+
+Inference uses independent RKNN contexts to process different frames concurrently:
+**two workers on RK3576** and **three on RK3588**. Each worker owns its input DMA
+buffer, RGA preprocessor, and output tensors. Inference threads prefer the
+performance CPU cores within the process’s allowed CPU set. Results remain in
+frame order.
+Live queues stay bounded and drop the oldest queued frame when overloaded.
+
+The CLI configuration and channel API accept `inference_workers`:
+
+| Value | Behavior |
+| ----- | -------- |
+| `0` (default) | Detect the chip and use one worker per NPU core |
+| `1` | One context with the RKNN all-core mask, for comparison |
+
+The dashboard uses automatic selection. Stop a channel before changing its worker
+count through the API. Each channel has its own contexts and buffers; concurrent
+channels share NPU time and use more memory. The model inspector loads one context.
+
+YOLO class-score scanning also processes contiguous blocks of proposals to reduce
+CPU cache misses. Thresholds, class selection, box transforms, and NMS stay the same.
 
 ### Example result on RK3588
 
@@ -192,6 +233,25 @@ Start with **`src/cli.cpp`** to follow the hardware pipeline. For the web app,
 start with **`src/server/main.cpp`** and **`web/src/App.tsx`**.
 
 C++ uses four spaces and Allman braces. `.clang-format` defines the C++ style.
+
+### Use the processing modules in another project
+
+Include this repository with CMake and link the engine:
+
+```cmake
+add_subdirectory(rockchip-yolo-cpp)
+target_link_libraries(my_app PRIVATE nvr::engine)
+```
+
+Application targets are off by default when included this way. For a standalone
+library build, set `NVR_BUILD_APPS=OFF`. Set `ROCKCHIP_SDK` and `MPP_ROOT` as needed.
+
+`engine/preprocess.hpp` accepts `Nv12ImageView` with image dimensions, strides,
+and borrowed DMA-BUF or mapped CPU storage. `engine/decoder.hpp` delivers
+frames with an optional packet callback; recording is optional.
+`engine/postprocess.hpp` accepts YOLO tensors and returns detections in source-image
+coordinates. It has no Rockchip, FFmpeg, or JSON dependency; link `nvr::postprocess` and set
+`NVR_BUILD_ENGINE=OFF` to build only that module on other platforms.
 
 ### Other commands
 

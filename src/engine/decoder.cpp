@@ -1,4 +1,8 @@
-#include "engine/pipeline.hpp"
+#include "engine/decoder.hpp"
+#include "engine/recorder.hpp"
+
+#include <algorithm>
+#include <thread>
 
 #include <cmath>
 
@@ -249,7 +253,8 @@ void Decoder::submit(AVPacket *avpacket, bool end, const std::function<void(Fram
     drain(consume, eos);
 }
 
-void Decoder::run(Recorder &recorder, const std::function<void(FramePtr)> &consume)
+void Decoder::run(const std::function<void(FramePtr)> &consume,
+                  const std::function<void(const AVPacket *)> &observe_packet)
 {
     auto free_packet = [](AVPacket *p)
     {
@@ -298,7 +303,10 @@ void Decoder::run(Recorder &recorder, const std::function<void(FramePtr)> &consu
                 }
                 awaiting_key = false;
             }
-            recorder.write(packet.get());
+            if (observe_packet)
+            {
+                observe_packet(packet.get());
+            }
             rc = av_bsf_send_packet(bsf_, packet.get());
             require(rc >= 0, "Annex-B submit: " + av_error(rc));
             drain_filter();
@@ -320,6 +328,15 @@ void Decoder::run(Recorder &recorder, const std::function<void(FramePtr)> &consu
             }
         }
     }
+}
+
+void Decoder::run(Recorder &recorder, const std::function<void(FramePtr)> &consume)
+{
+    run(consume,
+        [&](const AVPacket *packet)
+        {
+            recorder.write(packet);
+        });
     recorder.finish();
 }
 } // namespace nvr

@@ -11,6 +11,9 @@ import tempfile
 root = Path(os.environ["NVR_HOME"])
 dist = root / ".local/dist"
 dist.mkdir(parents=True, exist_ok=True)
+readelf = shutil.which("aarch64-linux-gnu-readelf") or shutil.which("readelf")
+if readelf is None:
+    raise RuntimeError("Install binutils to inspect ARM64 runtime dependencies")
 runtime_names = ("rk-nvr", "rk-nvr-worker", "rk-nvr-server", "rk-model-info")
 search = [root / ".local/deps" / name / "lib" for name in ("rga", "rknn", "mpp")]
 search += [Path("/usr/lib/aarch64-linux-gnu"), Path("/lib/aarch64-linux-gnu")]
@@ -33,6 +36,9 @@ with tempfile.TemporaryDirectory(prefix="package-", dir=dist) as temporary:
     binary.mkdir(parents=True)
     libraries.mkdir(parents=True)
     shutil.copy2(root / "nvr", stage / "nvr")
+    shutil.copy2(root / "README.md", stage / "README.md")
+    shutil.copytree(root / "config", stage / "config")
+    shutil.copytree(root / "assets", stage / "assets")
     shutil.copytree(root / ".local/build/web", stage / ".local/build/web")
     pending = []
     for name in runtime_names:
@@ -44,10 +50,10 @@ with tempfile.TemporaryDirectory(prefix="package-", dir=dist) as temporary:
     seen = set()
     while pending:
         path = pending.pop()
-        header = subprocess.check_output(["aarch64-linux-gnu-readelf", "-h", str(path)], text=True)
+        header = subprocess.check_output([readelf, "-h", str(path)], text=True)
         if "AArch64" not in header:
             raise RuntimeError(f"Not ARM64: {path}")
-        info = subprocess.check_output(["aarch64-linux-gnu-readelf", "-d", str(path)], text=True)
+        info = subprocess.check_output([readelf, "-d", str(path)], text=True)
         for name in re.findall(r"\(NEEDED\).*?\[(.*?)\]", info):
             if name in seen:
                 continue

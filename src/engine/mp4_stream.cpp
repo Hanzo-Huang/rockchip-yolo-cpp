@@ -1,5 +1,7 @@
 #include "engine/mp4_stream.hpp"
+#include "engine/common.hpp"
 
+#include <algorithm>
 #include <cstdio>
 
 namespace nvr

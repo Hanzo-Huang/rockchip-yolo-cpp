@@ -1,6 +1,7 @@
 #include "engine/jpeg_preview.hpp"
 
 #include <rk_venc_cfg.h>
+#include <algorithm>
 #include <cstring>
 
 namespace nvr

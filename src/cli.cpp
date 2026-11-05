@@ -1,4 +1,11 @@
-#include "engine/pipeline.hpp"
+#include "engine/decoder.hpp"
+#include "engine/detector_pool.hpp"
+#include "engine/recorder.hpp"
+
+#include <algorithm>
+#include <fstream>
+#include <set>
+#include <thread>
 
 #include <csignal>
 #include <iostream>
@@ -49,11 +56,11 @@ nvr::Json run_channel(const nvr::Json &config, const nvr::Json &channel,
     require(bool(events), "create detections log");
     Decoder decoder(uri, stop);
     // Destroy detector/imported source handles before destroying MPP's context.
-    Detector detector(config.at("model"), mode, config.value("verify_io", false), float(confidence),
-                      float(iou));
+    DetectorPool detector(config.at("model"), mode, config.value("verify_io", false),
+                          float(confidence), float(iou), config.value("inference_workers", 0));
     Recorder recorder(directory, decoder.parameters(), decoder.time_base(),
                       config.value("segment_seconds", 60.0));
-    FrameQueue queue(config.value("queue_capacity", size_t(1)));
+    FrameQueue queue(config.value("queue_capacity", size_t(6)));
     log({{"event", "channel_started"},
          {"channel", id},
          {"detector", detector.description},
@@ -69,35 +76,36 @@ nvr::Json run_channel(const nvr::Json &config, const nvr::Json &channel,
         {
             try
             {
-                while (auto frame = queue.pop())
-                {
-                    if (stop)
+                detector.run(
+                    queue,
+                    [&](const Frame &)
                     {
-                        break;
-                    }
-                    auto result = detector.infer(*frame);
-                    result["channel"] = id;
-                    ++inferred;
-                    objects += result["detections"].size();
-                    preprocess_total += result["preprocess_ms"].get<double>();
-                    inference_total += result["inference_ms"].get<double>();
-                    post_total += result["postprocess_ms"].get<double>();
-                    if (latency.size() == 10000)
+                        return !stop;
+                    },
+                    [&](const Frame &, Json result)
                     {
-                        latency.erase(latency.begin(), latency.begin() + 5000);
-                    }
-                    latency.push_back(result["age_ms"].get<double>());
-                    events << result.dump() << '\n';
-                    require(bool(events), "write detection events");
-                    if (inferred % 30 == 0)
-                    {
-                        log({{"event", "progress"},
-                             {"channel", id},
-                             {"inferred", inferred},
-                             {"age_ms", result["age_ms"]},
-                             {"queue_drops", queue.dropped.load()}});
-                    }
-                }
+                        result["channel"] = id;
+                        ++inferred;
+                        objects += result["detections"].size();
+                        preprocess_total += result["preprocess_ms"].get<double>();
+                        inference_total += result["inference_ms"].get<double>();
+                        post_total += result["postprocess_ms"].get<double>();
+                        if (latency.size() == 10000)
+                        {
+                            latency.erase(latency.begin(), latency.begin() + 5000);
+                        }
+                        latency.push_back(result["age_ms"].get<double>());
+                        events << result.dump() << '\n';
+                        require(bool(events), "write detection events");
+                        if (inferred % 30 == 0)
+                        {
+                            log({{"event", "progress"},
+                                 {"channel", id},
+                                 {"inferred", inferred},
+                                 {"age_ms", result["age_ms"]},
+                                 {"queue_drops", queue.dropped.load()}});
+                        }
+                    });
                 events.flush();
             }
             catch (...)

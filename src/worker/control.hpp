@@ -1,6 +1,7 @@
 #pragma once
 
-#include "engine/pipeline.hpp"
+#include "engine/frame_queue.hpp"
+#include "engine/json.hpp"
 
 namespace nvr
 {

@@ -1,5 +1,6 @@
 #include "worker/control.hpp"
 
+#include <algorithm>
 #include <iostream>
 #include <cmath>
 #include <poll.h>
