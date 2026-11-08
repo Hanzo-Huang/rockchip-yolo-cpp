@@ -21,7 +21,7 @@ if [[ "${1:-}" != --inside ]]; then
     fi
     workspace="$root/.local/cross/project"
     mkdir -p "$workspace/.local/cache/home"
-    tar -C "$root" --exclude=./.git --exclude=./.local --exclude=./.cross-build.log \
+    tar -C "$root" --exclude=./.git --exclude=./.local --exclude=./tmp --exclude=./.cross-build.log \
         --exclude=./web/node_modules -cf - . | tar -C "$workspace" -xf -
     docker run --rm --user "$(id -u):$(id -g)" \
         -e HOME=/project/.local/cache/home -e NVR_HOME=/project -e JOBS="${JOBS:-$(nproc)}" \

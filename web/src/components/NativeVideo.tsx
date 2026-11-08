@@ -1,14 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { socketURL } from "../lib/api";
+import type { InferenceResult as Detection } from "../lib/inference";
+import { drawResults } from "../lib/resultOverlay";
 
-interface Detection {
-    run_id: string;
-    epoch: number;
-    pts_us: number;
-    source_width: number;
-    source_height: number;
-    detections: { box: number[]; class_id: number; confidence: number }[];
-}
 interface VideoHeader {
     run_id: string;
     epoch: number;
@@ -193,28 +187,14 @@ export function NativeVideo({
                     surface.width = width;
                     surface.height = height;
                 }
-                const valid = matching && target - matching.pts_us <= 200000;
+                const maxAge = Math.max(200000, Math.min(1500000, (matching?.inference_ms ?? 0) * 3000));
+                const valid = matching && target - matching.pts_us <= maxAge;
                 const key = `${header?.run_id}:${header?.epoch}:${valid ? matching?.pts_us : "empty"}:${width}:${height}`;
                 if (key !== overlayKey) {
                     overlayKey = key;
                     context.clearRect(0, 0, surface.width, surface.height);
                     if (valid && matching) {
-                        const sx = surface.width / matching.source_width,
-                            sy = surface.height / matching.source_height;
-                        context.font = "12px sans-serif";
-                        context.lineWidth = 1.5;
-                        for (const item of matching.detections) {
-                            const [x1, y1, x2, y2] = item.box,
-                                x = x1 * sx,
-                                y = Math.max(17, y1 * sy);
-                            const label = `${latest.current.labels?.[item.class_id] ?? `class ${item.class_id}`} ${(item.confidence * 100).toFixed(0)}%`;
-                            context.strokeStyle = "#57e3bd";
-                            context.strokeRect(x1 * sx, y1 * sy, (x2 - x1) * sx, (y2 - y1) * sy);
-                            context.fillStyle = "#143f37";
-                            context.fillRect(x, y - 17, context.measureText(label).width + 8, 19);
-                            context.fillStyle = "#b4ffe9";
-                            context.fillText(label, x + 4, y - 4);
-                        }
+                        drawResults(context, matching, latest.current.labels);
                     }
                 }
             }
@@ -367,7 +347,7 @@ export function NativeVideo({
                 aria-label="Continuous original video"
                 onClick={() => void video.current?.play()}
             />
-            <canvas ref={canvas} aria-label="Timestamp-matched detection overlays" />
+            <canvas ref={canvas} aria-label="Timestamp-matched model result overlays" />
             {status && (
                 <div className="frame-placeholder">
                     <span>{status}</span>

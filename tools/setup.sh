@@ -13,10 +13,10 @@ command -v apt-get > /dev/null || {
 }
 packages=(build-essential cmake pkg-config git curl ca-certificates xz-utils python3
     ffmpeg libavformat-dev libavcodec-dev libavutil-dev libswscale-dev libavdevice-dev
-    nlohmann-json3-dev libdrm-dev)
+    nlohmann-json3-dev libdrm-dev libyaml-cpp-dev)
 if [[ "$web" == ON ]]; then
     # apt resolves release-specific runtime names; do not pin libjsoncpp25 etc.
-    packages+=(libjsoncpp-dev libyaml-cpp-dev libsqlite3-dev libarchive-dev zlib1g-dev uuid-dev)
+    packages+=(libjsoncpp-dev libsqlite3-dev libarchive-dev zlib1g-dev uuid-dev)
 fi
 missing=()
 for package in "${packages[@]}"; do

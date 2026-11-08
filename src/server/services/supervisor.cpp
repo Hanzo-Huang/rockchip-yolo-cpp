@@ -132,6 +132,7 @@ Json Runner::snapshot() const
 void Runner::observe()
 {
     std::string pending;
+    std::vector<char> packet(1048577);
     int status = 0;
     while (!done)
     {
@@ -142,7 +143,7 @@ void Runner::observe()
         while ((count = read(output_fd, bytes, sizeof(bytes))) > 0)
         {
             pending.append(bytes, size_t(count));
-            if (pending.size() > 131072)
+            if (pending.size() > 16777216)
             {
                 pending.clear();
                 break;
@@ -175,10 +176,9 @@ void Runner::observe()
                 } // Vendor banner lines are not IPC events.
             }
         }
-        std::vector<char> packet(200001);
         while ((count = recv(preview_fd, packet.data(), packet.size(), MSG_DONTWAIT)) > 0)
         {
-            if (count < 6 || count > 200000)
+            if (count < 6 || count > 1048576)
             {
                 continue;
             }

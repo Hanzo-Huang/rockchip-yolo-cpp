@@ -118,7 +118,7 @@ export function WarehousePage({
                                 >
                                     <span className="model-chip">RKNN</span>
                                     <small>
-                                        {asset.info.width} × {asset.info.height} ·{" "}
+                                        {asset.info.task ?? "detect"} · {asset.info.width} × {asset.info.height} ·{" "}
                                         {asset.info.names?.length ?? 0} classes
                                     </small>
                                 </button>

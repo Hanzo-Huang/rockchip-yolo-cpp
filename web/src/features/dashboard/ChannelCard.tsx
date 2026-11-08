@@ -48,6 +48,22 @@ export function ChannelCard({
             : channel.config.source_type === "rtsp"
               ? channel.config.rtsp_display
               : channel.config.camera_id;
+    const task = model?.info.task;
+    const resultValue =
+        task === "classify"
+            ? `${((runtime.top_confidence ?? 0) * 100).toFixed(0)}%`
+            : task === "depth"
+              ? "Depth"
+              : task === "semantic"
+                ? "Semantic"
+                : (runtime.objects ?? 0);
+    const resultLabel =
+        task === "classify"
+            ? "top score"
+            : task === "semantic" || task === "depth"
+              ? "task"
+              : "objects";
+
     return (
         <article className="channel-card">
             <div className="channel-visual">
@@ -107,8 +123,8 @@ export function ChannelCard({
                         <small>preprocess</small>
                     </div>
                     <div>
-                        <strong>{runtime.objects ?? 0}</strong>
-                        <small>objects</small>
+                        <strong>{resultValue}</strong>
+                        <small>{resultLabel}</small>
                     </div>
                 </div>
                 {channel.config.source_type === "file" && (

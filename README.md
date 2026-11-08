@@ -1,6 +1,6 @@
 # Rockchip YOLO C++
 
-YOLO object detection on **RK3576 and RK3588**, with a C++ engine and a web dashboard.
+YOLO inference on **RK3576 and RK3588**, with a C++ engine and a web dashboard.
 Uses **MPP** for video decoding, **RGA** for preprocessing, and **RKNN** for NPU inference.
 
 [Download](https://github.com/Hanzo-Huang/rockchip-yolo-cpp/releases) ·
@@ -11,7 +11,8 @@ Uses **MPP** for video decoding, **RGA** for preprocessing, and **RKNN** for NPU
 ![Dashboard with video playback and YOLO detections](assets/screenshots/dashboard-running.jpg)
 
 - RTSP streams, video files, and H.264 V4L2 cameras.
-- Video playback, detection overlays, recording, and model/video uploads.
+- Detection, instance masks, keypoints, rotated boxes, classification, semantic maps, and depth overlays.
+- Video playback, recording, and model/video uploads.
 - Automatic parallel inference: two NPU workers on RK3576, three on RK3588.
 - RGA and CPU preprocessing modes for comparison; both use MPP and RKNN.
 
@@ -20,6 +21,7 @@ Uses **MPP** for video decoding, **RGA** for preprocessing, and **RKNN** for NPU
 Use a board image with working **MPP, RGA, and RKNPU drivers**. The prebuilt
 package targets **Ubuntu 26.04 ARM64** and includes the application, shared
 libraries, and web frontend. Models are supplied separately.
+The v0.1.0 archive supports detection only; build from source for the additional tasks below.
 
 Download the runtime archive and `SHA256SUMS` from
 [Releases](https://github.com/Hanzo-Huang/rockchip-yolo-cpp/releases), then run on the board:
@@ -37,7 +39,7 @@ Open **http://BOARD_IP:8080** in your browser. To change the port, use
 If `ffprobe` is missing, install it with `sudo apt install ffmpeg`.
 Keep the extracted directory together; the executables need its libraries and web assets.
 
-### Start a detection channel
+### Start a channel
 
 1. In **Model warehouse**, upload a `.rknn` model and its `metadata.yaml`, or a ZIP containing both.
 2. For a video file, upload an MP4 in **Video warehouse**. For a camera or RTSP stream, select it when adding a channel.
@@ -53,15 +55,29 @@ but browser playback depends on codec support.
 Export each model for the board's chip: RK3576 and RK3588 need their own `.rknn`
 exports. The metadata must match the model's input size and class names.
 
-| Model/export | Support |
+| Model family | Tasks |
 | --- | --- |
-| YOLO26n, Rockchip two-output scores/xyxy | Tested on RK3576 and RK3588 |
-| Decoded single-output YOLO; nine-output affine INT8 DFL | Implemented; compatibility depends on the export |
-| Post-NMS end-to-end exports, segmentation, pose, OBB | Unsupported |
+| YOLOv8, YOLO11 | Detection, instance segmentation, pose, OBB, classification |
+| YOLOv10 | Detection |
+| YOLO26 | Detection, instance segmentation, pose, OBB, classification, semantic segmentation, depth |
 
-Models must have one batch-1 RGB image input. See
-[RKNN Model Zoo](https://github.com/airockchip/rknn_model_zoo) for model export examples.
+Use a task-specific checkpoint: a detection model cannot produce masks or keypoints.
+Models require one batch-1 RGB input and matching `metadata.yaml`. Decoded and
+end-to-end exports are supported, alongside Rockchip split and spatial detection heads.
 Inspect a model with `./nvr inspect /path/to/model.rknn`.
+
+### Convert a model
+
+Export for your board (`rk3576` or `rk3588`) using the
+[Ultralytics RKNN export guide](https://docs.ultralytics.com/integrations/rockchip-rknn/).
+Upload the `.rknn` file and its `metadata.yaml` to the model warehouse. The
+metadata tells the application how to interpret the model's outputs.
+
+Classification uses a center crop. Other tasks use letterboxing. JSON results
+contain `detections`, with optional `mask`, `keypoints`, or `polygon` per object;
+classification uses `classification`, and semantic/depth models use `dense`.
+Raster maps are reduced for preview and encoded as alternating value/count runs.
+Depth values decode as `offset + value * scale`; 65536 marks an invalid sample.
 
 Single-channel tests with **YOLO26n, 640×640 input, RGA preprocessing, and a
 4K 60 FPS H.264 RTSP stream** reached approximately **60 inference FPS on both boards**.
@@ -111,7 +127,8 @@ Application targets are disabled by default when included this way.
 | [decoder.hpp](src/engine/decoder.hpp) | MPP decoding with frame and optional packet callbacks |
 | [preprocess.hpp](src/engine/preprocess.hpp) | RGA/CPU preprocessing from borrowed NV12 image buffers |
 | [detector_pool.hpp](src/engine/detector_pool.hpp) | Ordered inference across independent RKNN contexts |
-| [postprocess.hpp](src/engine/postprocess.hpp) | YOLO tensor decoding, NMS, and source-image box coordinates |
+| [task_model.hpp](src/engine/task_model.hpp) | Task tensor contracts, decoding, NMS, and portable result types |
+| [postprocess.hpp](src/engine/postprocess.hpp) | Optimized detection postprocessing |
 
 For portable postprocessing only, set `NVR_BUILD_ENGINE=OFF` and link
 `nvr::postprocess`. It needs neither the Rockchip SDK nor FFmpeg.

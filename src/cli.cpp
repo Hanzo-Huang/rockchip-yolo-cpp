@@ -1,4 +1,5 @@
 #include "engine/decoder.hpp"
+#include "model/metadata.hpp"
 #include "engine/detector_pool.hpp"
 #include "engine/recorder.hpp"
 
@@ -57,7 +58,8 @@ nvr::Json run_channel(const nvr::Json &config, const nvr::Json &channel,
     Decoder decoder(uri, stop);
     // Destroy detector/imported source handles before destroying MPP's context.
     DetectorPool detector(config.at("model"), mode, config.value("verify_io", false),
-                          float(confidence), float(iou), config.value("inference_workers", 0));
+                          float(confidence), float(iou), config.value("inference_workers", 0),
+                          configured_model_options(config));
     Recorder recorder(directory, decoder.parameters(), decoder.time_base(),
                       config.value("segment_seconds", 60.0));
     FrameQueue queue(config.value("queue_capacity", size_t(6)));

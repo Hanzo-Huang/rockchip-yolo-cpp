@@ -65,7 +65,9 @@ FFmpeg for input, MPP for decoding, RGA for preprocessing, and RKNN for inferenc
   throughput, queue drops, and latency; stream timestamps alone can mislead.
 - For concurrency changes, check detection equivalence, result ordering,
   pause/resume, seek, error propagation, and shutdown.
-- Keep temporary validation files outside source directories and clean them up.
+- Track only what users need to build, configure, and run the application.
+  Keep temporary model conversion, test, and benchmark scripts in the ignored
+  `tmp/` folder. Do not commit those scripts or their outputs.
 - `.local/state/` contains user settings, models, uploads, and recordings. Do not
   delete it when cleaning builds. Keep validation state and binaries separate
   from running installations, and do not replace drivers for routine builds.

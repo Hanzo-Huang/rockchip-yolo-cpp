@@ -1,4 +1,5 @@
 .local/
+/tmp/
 *.rknn
 web/node_modules/
 __pycache__/

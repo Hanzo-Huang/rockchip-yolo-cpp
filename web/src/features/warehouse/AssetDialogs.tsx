@@ -77,9 +77,10 @@ export function ModelDetails({ asset, onClose }: { asset: Asset; onClose: () => 
     return (
         <Dialog title={`Model · ${asset.name}`} wide onClose={onClose}>
             <p className="notice">
-                {asset.info.reason} Runtime compatibility does not certify detection accuracy.
+                {asset.info.reason} Runtime compatibility does not certify model accuracy.
             </p>
             <div className="model-facts">
+                <span>{asset.info.task ?? "detect"}</span>
                 <span>
                     {asset.info.width} × {asset.info.height} input
                 </span>

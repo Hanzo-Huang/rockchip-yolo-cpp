@@ -1,4 +1,5 @@
 #include "worker/control.hpp"
+#include "model/metadata.hpp"
 #include "engine/decoder.hpp"
 #include "engine/detector_pool.hpp"
 #include "engine/recorder.hpp"
@@ -31,7 +32,7 @@ void signal_stop(int)
 void send_preview(int fd, const nvr::Json &metadata, const std::vector<uint8_t> &jpeg)
 {
     std::string header = metadata.dump();
-    if (header.size() + jpeg.size() + 4 > 200000)
+    if (header.size() + jpeg.size() + 4 > 1048576)
     {
         return;
     }
@@ -118,7 +119,7 @@ int run_worker(const Json &config)
                 detector = std::make_unique<DetectorPool>(
                     config.at("model"), config.value("preprocess", std::string("rga")), false,
                     config.value("confidence", 0.35f), config.value("nms_iou", 0.45f),
-                    config.value("inference_workers", 0));
+                    config.value("inference_workers", 0), configured_model_options(config));
             }
             // Declare after decoder: release imported handles and frames before MPP.
             std::unique_ptr<JpegPreview> preview;
@@ -279,7 +280,17 @@ int run_worker(const Json &config)
                                          {"output_get_ms", result.value("output_get_ms", 0.0)},
                                          {"postprocess_ms", result.value("postprocess_ms", 0.0)},
                                          {"age_ms", result.value("age_ms", 0.0)},
-                                         {"objects", result["detections"].size()}});
+                                         {"objects", result["detections"].size()},
+                                         {"task", result.value("task", std::string("detect"))},
+                                         {"top_class", result.contains("classification") &&
+                                                               !result["classification"].empty()
+                                                           ? result["classification"][0]["class_id"]
+                                                           : Json(nullptr)},
+                                         {"top_confidence",
+                                          result.contains("classification") &&
+                                                  !result["classification"].empty()
+                                              ? result["classification"][0]["confidence"]
+                                              : Json(0)}});
                                 });
                         }
                         events.flush();
@@ -399,13 +410,17 @@ int run_worker(const Json &config)
                         result["detection_frame"] = result.value("frame", uint64_t(0));
                         result["detection_pts_us"] = detection_pts;
                         result["detection_age_ms"] = age;
-                        if (age < 0 || age > 200 ||
+                        if (age < 0 ||
+                            age >
+                                std::clamp(result.value("inference_ms", 0.0) * 3, 200.0, 1500.0) ||
                             result.value("source_width", 0) !=
                                 int(mpp_frame_get_width(frame->value)) ||
                             result.value("source_height", 0) !=
                                 int(mpp_frame_get_height(frame->value)))
                         {
                             result["detections"] = Json::array();
+                            result.erase("classification");
+                            result.erase("dense");
                         }
                         result["frame"] = frame->sequence;
                         result["pts_us"] = frame->pts_us;
@@ -531,7 +546,9 @@ int run_worker(const Json &config)
                         if (detector && active &&
                             (frame->preview_step || (frame->sequence - 1) % uint64_t(every) == 0))
                         {
-                            queue->push(std::move(frame), false, control.epoch_stop);
+                            // Offline inference must retain every selected frame, including slow
+                            // dense tasks.
+                            queue->push(std::move(frame), control.file, control.epoch_stop);
                         }
                     });
                 // Keep a paused last-frame seek paused even when demux has reached EOF.

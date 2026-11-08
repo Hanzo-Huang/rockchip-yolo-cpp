@@ -35,14 +35,15 @@ void prefer_performance_cpus()
 namespace nvr
 {
 DetectorPool::DetectorPool(const std::string &model, const std::string &preprocess, bool verify,
-                           float confidence, float iou, int workers)
+                           float confidence, float iou, int workers, const ModelOptions &options)
 {
     std::ifstream compatible("/proc/device-tree/compatible", std::ios::binary);
     std::string chip((std::istreambuf_iterator<char>(compatible)), {});
     const int cores = chip.find("rockchip,rk3588") != std::string::npos   ? 3
                       : chip.find("rockchip,rk3576") != std::string::npos ? 2
                                                                           : 1;
-    require(workers == 0 || workers == 1, "inference_workers must be 0 (auto) or 1 (single context)");
+    require(workers == 0 || workers == 1,
+            "inference_workers must be 0 (auto) or 1 (single context)");
     if (workers == 0)
     {
         workers = cores;
@@ -52,7 +53,7 @@ DetectorPool::DetectorPool(const std::string &model, const std::string &preproce
     {
         auto mask = workers == 1 ? RKNN_NPU_CORE_ALL : static_cast<rknn_core_mask>(1 << i);
         detectors_.push_back(
-            std::make_unique<Detector>(model, preprocess, verify, confidence, iou, mask));
+            std::make_unique<Detector>(model, preprocess, verify, confidence, iou, mask, options));
         masks.push_back(detectors_.back()->description.at("core_mask"));
     }
     description = detectors_.front()->description;

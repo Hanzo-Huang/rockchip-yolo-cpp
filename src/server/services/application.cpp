@@ -201,8 +201,8 @@ Json Application::save_channel(const Json &input, const std::string &id)
     check(preprocessing == "rga" || preprocessing == "cpu", "Invalid preprocessing mode");
     int every = values.value("detect_every", 1);
     check(every >= 1 && every <= 30, "Inference interval must be 1–30");
-    int workers = values.value(
-        "inference_workers", editing ? existing["config"].value("inference_workers", 0) : 0);
+    int workers = values.value("inference_workers",
+                               editing ? existing["config"].value("inference_workers", 0) : 0);
     check(workers == 0 || workers == 1, "Inference workers must be 0 (auto) or 1 (single context)");
     double confidence = values.value("confidence", 0.35), iou = values.value("nms_iou", 0.45);
     check(std::isfinite(confidence) && confidence > 0 && confidence < 1 && std::isfinite(iou) &&
@@ -240,6 +240,7 @@ Json Application::channel_command(const std::string &id, const Json &input)
         check(model["status"] == "ready", "Model is incompatible", 409);
         config["model"] = model["path"];
         config["model_id"] = model["id"];
+        config["model_info"] = model["info"];
         if (type == "file")
         {
             auto video = store.asset(channel["video_id"]);

@@ -18,7 +18,7 @@ class DetectorPool
 public:
     Json description;
     DetectorPool(const std::string &model, const std::string &preprocess, bool verify,
-                 float confidence, float iou, int workers = 0);
+                 float confidence, float iou, int workers = 0, const ModelOptions &options = {});
     void run(FrameQueue &queue, const std::function<bool(const Frame &)> &active,
              const std::function<void(const Frame &, Json)> &consume);
 };

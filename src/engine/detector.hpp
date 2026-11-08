@@ -4,6 +4,8 @@
 #include "engine/json.hpp"
 #include "engine/preprocess.hpp"
 #include "engine/postprocess.hpp"
+#include "engine/task_model.hpp"
+#include "engine/native_output.hpp"
 
 #include <memory>
 #include <string>
@@ -12,7 +14,7 @@
 
 namespace nvr
 {
-// RKNN inference and detection postprocessing.
+// RKNN inference and task postprocessing.
 class Detector
 {
     rknn_context context_ = 0;
@@ -21,6 +23,14 @@ class Detector
     std::unique_ptr<DmaBuffer> input_;
     std::unique_ptr<Preprocessor> preprocessor_;
     std::unique_ptr<YoloPostprocessor> postprocessor_;
+    std::unique_ptr<TaskPostprocessor> task_postprocessor_;
+    std::vector<std::vector<float>> task_outputs_;
+    std::unique_ptr<NativeOutput> dense_output_;
+    ModelOptions options_;
+    std::string model_path_;
+    rknn_core_mask core_mask_;
+    bool task_output_ = false;
+    float confidence_ = 0.35f, nms_iou_ = 0.45f;
     std::vector<float> output_;
     int width_ = 0, height_ = 0, stride_ = 0;
     std::vector<rknn_tensor_attr> output_attrs_;
@@ -39,7 +49,8 @@ public:
     Json description;
 
     Detector(const std::string &model, const std::string &preprocess, bool verify, float confidence,
-             float iou, rknn_core_mask core_mask = RKNN_NPU_CORE_ALL);
+             float iou, rknn_core_mask core_mask = RKNN_NPU_CORE_ALL,
+             const ModelOptions &options = {});
     ~Detector();
 
     Detector(const Detector &) = delete;

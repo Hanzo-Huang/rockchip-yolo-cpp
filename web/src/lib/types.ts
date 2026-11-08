@@ -1,3 +1,5 @@
+import type { ModelTask } from "./inference";
+
 export interface Runtime {
     state: string;
     run_id?: string;
@@ -10,6 +12,9 @@ export interface Runtime {
     preprocess_ms?: number;
     inference_ms?: number;
     objects?: number;
+    task?: ModelTask;
+    top_class?: number;
+    top_confidence?: number;
     queue_drops?: number;
     error?: string;
     preview_error?: string;
@@ -22,6 +27,7 @@ export interface Asset {
     created_at: string;
     references: { id: string; name: string }[];
     info: {
+        task?: ModelTask;
         width?: number;
         height?: number;
         duration?: number;

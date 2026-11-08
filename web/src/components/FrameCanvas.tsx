@@ -1,12 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { socketURL } from "../lib/api";
-interface Metadata {
-    run_id: string;
-    epoch: number;
-    source_width: number;
-    source_height: number;
-    detections: { box: number[]; class_id: number; confidence: number }[];
-}
+import type { InferenceResult as Metadata } from "../lib/inference";
+import { drawResults } from "../lib/resultOverlay";
 export function FrameCanvas({
     channel,
     run,
@@ -91,22 +86,7 @@ export function FrameCanvas({
                         element.width = bitmap.width;
                         element.height = bitmap.height;
                         context.drawImage(bitmap, 0, 0);
-                        const sx = bitmap.width / meta.source_width,
-                            sy = bitmap.height / meta.source_height;
-                        context.font = "11px ui-monospace, monospace";
-                        context.lineWidth = 1.5;
-                        for (const item of meta.detections) {
-                            const [x1, y1, x2, y2] = item.box;
-                            const label = `${latest.current.labels?.[item.class_id] ?? `class ${item.class_id}`} ${(item.confidence * 100).toFixed(0)}%`;
-                            const x = Math.max(0, x1 * sx),
-                                y = Math.max(13, y1 * sy);
-                            context.strokeStyle = "#57e3bd";
-                            context.strokeRect(x1 * sx, y1 * sy, (x2 - x1) * sx, (y2 - y1) * sy);
-                            context.fillStyle = "#143f37";
-                            context.fillRect(x, y - 13, context.measureText(label).width + 8, 14);
-                            context.fillStyle = "#b4ffe9";
-                            context.fillText(label, x + 4, y - 3);
-                        }
+                        drawResults(context, meta, latest.current.labels);
                         drawnFrames.current += 1;
                         setStatus("");
                     } finally {
@@ -138,7 +118,7 @@ export function FrameCanvas({
     }, [channel, focused, enabled]);
     return (
         <div className="frame">
-            <canvas ref={canvas} aria-label="Hardware-decoded video with detection overlays" />
+            <canvas ref={canvas} aria-label="Hardware-decoded video with model result overlays" />
             {status && (
                 <div className="frame-placeholder">
                     <span>{status}</span>
