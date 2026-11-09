@@ -2,6 +2,7 @@
 #include "engine/common.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 namespace nvr
@@ -155,6 +156,53 @@ TaskPostprocessor::TaskPostprocessor(const ModelOptions &options,
         const auto &proto = specs[size_t(prototypes_)];
         mask_channels_ = proto.dimensions[proto.channels_first ? 1 : 3];
     }
+    if (options.spatial_head != SpatialHead::Automatic)
+    {
+        const bool anchored = options.spatial_head == SpatialHead::Anchored;
+        const bool masks = options.task == ModelTask::Segment;
+        require(options.task == ModelTask::Detect || (anchored && masks),
+                "Objectness heads require detection or anchored segmentation");
+        const int tensors_per_grid = masks ? 2 : 1;
+        const int anchor_count = anchored ? 3 : 1;
+        require(specs.size() == size_t(3 * tensors_per_grid + (masks ? 1 : 0)) &&
+                    (!masks || prototypes_ == 6),
+                "Expected three objectness grids and optional mask tensors");
+        for (int branch = 0; branch < 3; ++branch)
+        {
+            int index = branch * tensors_per_grid;
+            const auto &spec = specs[size_t(index)];
+            const auto &grid = spec.dimensions;
+            require(spec.channels_first && grid.size() == 4 && grid[1] % anchor_count == 0 &&
+                        width % grid[3] == 0 && height % grid[2] == 0 &&
+                        width / grid[3] == height / grid[2],
+                    "Invalid objectness grid");
+            int classes = grid[1] / anchor_count - 5;
+            require(classes > 0 && (options_.classes == 0 || classes == options_.classes),
+                    "Objectness class count differs from metadata");
+            options_.classes = classes;
+            regressions_.push_back(index);
+            proposals_ += anchor_count * grid[2] * grid[3];
+            if (anchored)
+            {
+                const auto &anchors = options.anchors[size_t(branch)];
+                require(std::all_of(anchors.begin(), anchors.end(), [](float value)
+                                    { return std::isfinite(value) && value > 0; }),
+                        "Anchors must contain positive widths and heights");
+            }
+            if (masks)
+            {
+                const auto &coefficients = specs[size_t(index + 1)];
+                const auto &shape = coefficients.dimensions;
+                require(coefficients.channels_first && shape.size() == 4 &&
+                            shape[1] == anchor_count * mask_channels_ && shape[2] == grid[2] &&
+                            shape[3] == grid[3],
+                        "Mask coefficients differ from the detection grid");
+                extras_.push_back(index + 1);
+            }
+        }
+        layout_ = Layout::Objectness;
+        return;
+    }
     const int extras = options.task == ModelTask::Segment ? mask_channels_
                        : options.task == ModelTask::Pose
                            ? options.keypoints * options.keypoint_dimensions
@@ -199,7 +247,8 @@ TaskPostprocessor::TaskPostprocessor(const ModelOptions &options,
         const auto &d = specs[i].dimensions;
         if (d.size() == 3 && (d[1] == 4 || d[2] == 4))
         {
-            if (boxes_ < 0 || specs[i].name.find("Mul_2") != std::string::npos)
+            if (boxes_ < 0 || specs[i].name == "boxes" ||
+                specs[i].name.find("Mul_2") != std::string::npos)
             {
                 boxes_ = int(i);
             }
@@ -227,7 +276,8 @@ TaskPostprocessor::TaskPostprocessor(const ModelOptions &options,
                 continue;
             }
             if (extras && channels == extras && auxiliary_ < 0 &&
-                (options.classes != extras || specs[i].name.find("Sigmoid") == std::string::npos))
+                (options.classes != extras || (specs[i].name != "scores" &&
+                                               specs[i].name.find("Sigmoid") == std::string::npos)))
             {
                 auxiliary_ = int(i);
             }
@@ -246,8 +296,9 @@ TaskPostprocessor::TaskPostprocessor(const ModelOptions &options,
     // Raw model-zoo exports use three spatial prediction branches.
     int count = int(specs.size()) - (prototypes_ >= 0 ? 1 : 0);
     int stride = count == 13 - 1 ? 4 : count == 9 || count == 10 ? 3 : count == 6 ? 2 : 0;
-    bool packed_pose = options.task == ModelTask::Pose && count == 4;
-    if (packed_pose)
+    const bool packed_task =
+        (options.task == ModelTask::Pose || options.task == ModelTask::Obb) && count == 4;
+    if (packed_task)
     {
         stride = 1;
     }
@@ -257,18 +308,18 @@ TaskPostprocessor::TaskPostprocessor(const ModelOptions &options,
     proposals_ = 0;
     for (int branch = 0; branch < 3; ++branch)
     {
-        int reg = branch * stride, cls = packed_pose ? reg : reg + 1;
+        int reg = branch * stride, cls = packed_task ? reg : reg + 1;
         const auto &d = specs[size_t(reg)].dimensions;
         const auto &c = specs[size_t(cls)].dimensions;
         require(d.size() == 4 && c.size() == 4 && specs[size_t(reg)].channels_first &&
                     specs[size_t(cls)].channels_first && d[2] == c[2] && d[3] == c[3] &&
                     width % d[3] == 0 && height % d[2] == 0 && width / d[3] == height / d[2],
                 "Raw YOLO branches require matching NCHW grids");
-        int classes = packed_pose ? d[1] - 64 : c[1];
+        int classes = packed_task ? d[1] - 64 : c[1];
         require(classes > 0 && (options_.classes == 0 || classes == options_.classes),
                 "Raw head class count differs from metadata");
         options_.classes = classes;
-        require(packed_pose || d[1] == 4 || (d[1] >= 8 && d[1] % 4 == 0 && d[1] <= 128),
+        require(packed_task || d[1] == 4 || (d[1] >= 8 && d[1] % 4 == 0 && d[1] <= 128),
                 "Invalid DFL regression channels");
         regressions_.push_back(reg);
         class_scores_.push_back(cls);
@@ -303,6 +354,9 @@ const char *TaskPostprocessor::description() const
         return "split scores/boxes";
     case Layout::Dfl:
         return "spatial YOLO heads";
+    case Layout::Objectness:
+        return options_.spatial_head == SpatialHead::Anchored ? "anchored YOLO heads"
+                                                             : "YOLOX objectness heads";
     case Layout::Classification:
         return "classification probabilities";
     case Layout::Dense:

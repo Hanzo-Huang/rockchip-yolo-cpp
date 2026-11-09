@@ -17,6 +17,16 @@ ModelOptions model_options(const Json &info)
     }
     options.end_to_end = info.value("end2end", false);
     options.normalized = info.value("coordinates", std::string("pixels")) == "normalized";
+    const std::string head = info.value("head", std::string());
+    if (head == "anchored")
+    {
+        options.spatial_head = SpatialHead::Anchored;
+        options.anchors = info.at("anchors").get<decltype(options.anchors)>();
+    }
+    else if (head == "yolox")
+    {
+        options.spatial_head = SpatialHead::YoloX;
+    }
     options.center_crop = info.value("preprocess", options.task == ModelTask::Classify
                                                        ? std::string("center_crop")
                                                        : std::string("letterbox")) == "center_crop";

@@ -137,7 +137,7 @@ TaskResult TaskPostprocessor::decode(const Geometry &g,
         {
             return;
         }
-        if (options_.normalized && (layout_ == Layout::Decoded || layout_ == Layout::EndToEnd))
+        if (options_.normalized && layout_ != Layout::Dfl && layout_ != Layout::Objectness)
         {
             candidate.x *= model_width;
             candidate.width *= model_width;
@@ -255,6 +255,76 @@ TaskResult TaskPostprocessor::decode(const Geometry &g,
             accept(std::move(c), options_.task != ModelTask::Obb);
         }
     }
+    else if (layout_ == Layout::Objectness)
+    {
+        const bool anchored = options_.spatial_head == SpatialHead::Anchored;
+        const int anchor_count = anchored ? 3 : 1;
+        for (size_t branch = 0; branch < regressions_.size(); ++branch)
+        {
+            const size_t index = size_t(regressions_[branch]);
+            const auto &grid = specs_[index].dimensions;
+            const int width = grid[3], cells = width * grid[2];
+            const float stride = float(input_width_ / width);
+            const auto &output = outputs[index];
+            for (int anchor = 0; anchor < anchor_count; ++anchor)
+            {
+                const int base = anchor * (5 + options_.classes);
+                for (int cell = 0; cell < cells; ++cell)
+                {
+                    auto value = [&](int channel)
+                    {
+                        return output[size_t(base + channel) * cells + cell];
+                    };
+                    const float objectness = value(4);
+                    if (!std::isfinite(objectness) || objectness < confidence)
+                    {
+                        continue;
+                    }
+                    Candidate candidate;
+                    for (int category = 0; category < options_.classes; ++category)
+                    {
+                        const float score = objectness * value(5 + category);
+                        if (std::isfinite(score) && score > candidate.score)
+                        {
+                            candidate.score = score;
+                            candidate.class_id = category;
+                        }
+                    }
+                    if (candidate.score < confidence)
+                    {
+                        continue;
+                    }
+                    const float column = float(cell % width), row = float(cell / width);
+                    if (anchored)
+                    {
+                        const auto &anchors = options_.anchors[branch];
+                        const float w = 2 * value(2), h = 2 * value(3);
+                        candidate.x = (2 * value(0) - .5f + column) * stride;
+                        candidate.y = (2 * value(1) - .5f + row) * stride;
+                        candidate.width = w * w * anchors[size_t(2 * anchor)];
+                        candidate.height = h * h * anchors[size_t(2 * anchor + 1)];
+                    }
+                    else
+                    {
+                        candidate.x = (value(0) + column) * stride;
+                        candidate.y = (value(1) + row) * stride;
+                        candidate.width = std::exp(value(2)) * stride;
+                        candidate.height = std::exp(value(3)) * stride;
+                    }
+                    if (extra_count)
+                    {
+                        const auto &masks = outputs[size_t(extras_[branch])];
+                        for (int coefficient = 0; coefficient < extra_count; ++coefficient)
+                        {
+                            candidate.extra.push_back(
+                                masks[size_t(anchor * extra_count + coefficient) * cells + cell]);
+                        }
+                    }
+                    accept(std::move(candidate), false);
+                }
+            }
+        }
+    }
     else
     {
         int offset = 0;
@@ -263,7 +333,11 @@ TaskResult TaskPostprocessor::decode(const Geometry &g,
             int reg = regressions_[branch], cls = class_scores_[branch];
             const auto &d = specs_[size_t(reg)].dimensions;
             int width = d[3], height = d[2], cells = width * height;
-            int channels = d[1] - (reg == cls ? options_.classes : 0), bins = channels / 4,
+            // Rockchip pose and OBB pack raw class logits after the DFL bins.
+            const bool packed_logits = reg == cls;
+            const float score_floor =
+                packed_logits ? std::log(confidence / (1 - confidence)) : confidence;
+            int channels = d[1] - (packed_logits ? options_.classes : 0), bins = channels / 4,
                 stride = input_width_ / width;
             for (int p = 0; p < cells; ++p)
             {
@@ -271,20 +345,25 @@ TaskResult TaskPostprocessor::decode(const Geometry &g,
                 c.proposal = offset + p;
                 c.branch = int(branch);
                 c.cell = p;
+                c.score = -std::numeric_limits<float>::infinity();
                 for (int category = 0; category < options_.classes; ++category)
                 {
                     float score =
                         outputs[size_t(cls)]
-                               [size_t(category + (reg == cls ? channels : 0)) * cells + p];
+                               [size_t(category + (packed_logits ? channels : 0)) * cells + p];
                     if (std::isfinite(score) && score > c.score)
                     {
                         c.score = score;
                         c.class_id = category;
                     }
                 }
-                if (c.score < confidence)
+                if (c.score < score_floor)
                 {
                     continue;
+                }
+                if (packed_logits)
+                {
+                    c.score = 1 / (1 + std::exp(-c.score));
                 }
                 float distances[4]{};
                 for (int side = 0; side < 4; ++side)
@@ -353,7 +432,7 @@ TaskResult TaskPostprocessor::decode(const Geometry &g,
         candidates.resize(1000);
     }
     std::vector<Candidate> kept;
-    const bool nms = layout_ != Layout::EndToEnd && layout_ != Layout::Split;
+    const bool nms = !options_.end_to_end && layout_ != Layout::EndToEnd && layout_ != Layout::Split;
     for (size_t index = 0; index < candidates.size(); ++index)
     {
         const auto &candidate = candidates[index];

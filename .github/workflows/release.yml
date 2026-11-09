@@ -1,0 +1,31 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build ARM64 package
+        run: ./nvr cross-build
+
+      - name: Publish release
+        working-directory: .local/dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          archive="rockchip-yolo-cpp-${TAG}-ubuntu26.04-arm64.tar.gz"
+          mv rockchip-yolo-cpp-ubuntu26-arm64.tar.gz "$archive"
+          sha256sum "$archive" > SHA256SUMS
+          gh release create "$TAG" "$archive" SHA256SUMS --verify-tag --generate-notes

@@ -60,7 +60,8 @@ Detector::Detector(const std::string &model, const std::string &mode, bool verif
         const auto layout_kind = task_postprocessor_->layout();
         // Preserve the quantized detection fast path; task heads use reusable float buffers.
         const bool fast_dfl =
-            layout_kind == TaskPostprocessor::Layout::Dfl && io.n_output == 9 &&
+            layout_kind == TaskPostprocessor::Layout::Dfl && !options_.end_to_end &&
+            io.n_output == 9 &&
             std::all_of(output_attrs_.begin(), output_attrs_.end(),
                         [](const rknn_tensor_attr &attr)
                         {
@@ -72,7 +73,9 @@ Detector::Detector(const std::string &model, const std::string &mode, bool verif
             output_attrs_[6].dims[1] == 64;
         task_output_ = options_.task != ModelTask::Detect ||
                        layout_kind == TaskPostprocessor::Layout::EndToEnd ||
+                       layout_kind == TaskPostprocessor::Layout::Objectness ||
                        task_postprocessor_->classes() > 1020 ||
+                       (layout_kind == TaskPostprocessor::Layout::Split && options_.normalized) ||
                        (layout_kind == TaskPostprocessor::Layout::Dfl && !fast_dfl) ||
                        (layout_kind == TaskPostprocessor::Layout::Decoded &&
                         (options_.normalized ||

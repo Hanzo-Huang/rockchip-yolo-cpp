@@ -21,7 +21,8 @@ Uses **MPP** for video decoding, **RGA** for preprocessing, and **RKNN** for NPU
 Use a board image with working **MPP, RGA, and RKNPU drivers**. The prebuilt
 package targets **Ubuntu 26.04 ARM64** and includes the application, shared
 libraries, and web frontend. Models are supplied separately.
-The v0.1.0 archive supports detection only; build from source for the additional tasks below.
+The v0.1.0 archive supports detection only. Build from source if you are using
+that release and need the additional tasks below.
 
 Download the runtime archive and `SHA256SUMS` from
 [Releases](https://github.com/Hanzo-Huang/rockchip-yolo-cpp/releases), then run on the board:
@@ -55,23 +56,37 @@ but browser playback depends on codec support.
 Export each model for the board's chip: RK3576 and RK3588 need their own `.rknn`
 exports. The metadata must match the model's input size and class names.
 
-| Model family | Tasks |
-| --- | --- |
-| YOLOv8, YOLO11 | Detection, instance segmentation, pose, OBB, classification |
-| YOLOv10 | Detection |
-| YOLO26 | Detection, instance segmentation, pose, OBB, classification, semantic segmentation, depth |
+The application supports both **Ultralytics RKNN exports** and **Rockchip Model
+Zoo RKNN outputs**. Support depends on the output tensors and model metadata.
+The tested model families and tasks are:
 
-Use a task-specific checkpoint: a detection model cannot produce masks or keypoints.
-Models require one batch-1 RGB input and matching `metadata.yaml`. Decoded and
-end-to-end exports are supported, alongside Rockchip split and spatial detection heads.
+| Family | Tasks | Export paths tested |
+| --- | --- | --- |
+| YOLOv5 | Detection, instance segmentation, classification | Model Zoo detection and segmentation, custom classification |
+| YOLOv6, YOLOv7, YOLOX, PP-YOLOE | Detection | Model Zoo or its linked Rockchip exporter |
+| YOLOv8, YOLO11 | Detection, instance segmentation, pose, oriented boxes, classification | Ultralytics, Model Zoo or Rockchip-guided spatial heads, custom classification |
+| YOLOv10 | Detection | Ultralytics and Rockchip |
+| YOLO26 | Detection, instance segmentation, pose, oriented boxes, classification, semantic segmentation, depth | Ultralytics and custom task exports, plus Model Zoo detection |
+
+Use a checkpoint trained for the task you need. Models require one batch-1 RGB
+input and matching `metadata.yaml`. The app accepts decoded and end-to-end
+outputs, as well as supported Rockchip split and spatial heads. YOLO-World's
+detector also needs a text input from a separate CLIP encoder. Those models
+were tested with Rockchip's demo and require that demo to run.
 Inspect a model with `./nvr inspect /path/to/model.rknn`.
 
 ### Convert a model
 
-Export for your board (`rk3576` or `rk3588`) using the
-[Ultralytics RKNN export guide](https://docs.ultralytics.com/integrations/rockchip-rknn/).
-Upload the `.rknn` file and its `metadata.yaml` to the model warehouse. The
-metadata tells the application how to interpret the model's outputs.
+For **Ultralytics outputs**, follow the [RKNN export guide](https://docs.ultralytics.com/integrations/rockchip-rknn/)
+and keep the exported metadata. For **Model Zoo outputs**, follow the
+[model's conversion instructions](https://github.com/airockchip/rknn_model_zoo#model-support)
+and include a metadata sidecar with the task, batch size, image size, and labels.
+Select the target chip during conversion. Upload both files to Model Warehouse.
+
+For Model Zoo exports, set `head: anchored` for YOLOv5 and YOLOv7 and copy the
+three rows of width and height pairs from the example's anchor file into
+`anchors`. Use `head: yolox` for YOLOX and `end2end: true` for YOLOv10 and
+YOLO26 detection. For COCO pose models, use `kpt_shape: [17, 3]`.
 
 Classification uses a center crop. Other tasks use letterboxing. JSON results
 contain `detections`, with optional `mask`, `keypoints`, or `polygon` per object;

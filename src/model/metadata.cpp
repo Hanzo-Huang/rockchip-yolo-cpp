@@ -54,6 +54,16 @@ Json read_model_metadata(const std::filesystem::path &path)
     {
         throw std::runtime_error("Pose metadata requires kpt_shape");
     }
+    if (auto anchors = document["anchors"])
+    {
+        require(anchors.IsSequence() && anchors.size() == 3, "Expected three anchor grids");
+        info["anchors"] = Json::array();
+        for (const auto &grid : anchors)
+        {
+            require(grid.IsSequence() && grid.size() == 6, "Expected three anchors per grid");
+            info["anchors"].push_back(grid.as<std::vector<float>>());
+        }
+    }
     for (const auto *field :
          {"description", "author", "version", "license", "date", "docs", "head", "coordinates",
           "preprocess", "dense_resize", "precision", "head_precision", "decode_precision",

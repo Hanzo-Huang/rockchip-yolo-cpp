@@ -34,6 +34,13 @@ enum class DenseResize
     AlignCorners
 };
 
+enum class SpatialHead
+{
+    Automatic,
+    Anchored,
+    YoloX
+};
+
 struct ModelOptions
 {
     ModelTask task = ModelTask::Detect;
@@ -42,6 +49,8 @@ struct ModelOptions
     bool normalized = false, end_to_end = false;
     bool center_crop = false;
     DenseResize dense_resize = DenseResize::None;
+    SpatialHead spatial_head = SpatialHead::Automatic;
+    std::array<std::array<float, 6>, 3> anchors{};
 };
 
 struct TensorSpec
@@ -94,6 +103,7 @@ public:
         EndToEnd,
         Split,
         Dfl,
+        Objectness,
         Classification,
         Dense
     };
