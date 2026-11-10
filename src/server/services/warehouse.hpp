@@ -39,6 +39,7 @@ public:
 };
 
 Json inspect_video(const fs::path &file);
+std::string embedded_rknn_toolkit_version(const fs::path &file);
 Json inspect_model(const fs::path &directory, const fs::path &bin);
 
 void extract_model_zip(const fs::path &file, const fs::path &destination);

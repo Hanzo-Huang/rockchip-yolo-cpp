@@ -27,11 +27,14 @@ if [[ "$web" == ON ]]; then
     cd "$root/web"
     web_key="$(
         sha256sum package.json package-lock.json
-        node --version
+        node -p 'JSON.stringify([process.version, process.platform, process.arch])'
     )"
     stamp="$root/.local/cache/web-dependencies"
-    if [[ ! -f node_modules/.package-lock.json || ! -f "$stamp" || "$(cat "$stamp")" != "$web_key" ]]; then
-        npm ci --no-audit --no-fund
+    # A copied or incomplete install can have a lockfile but lack native Rollup.
+    if [[ ! -f node_modules/.package-lock.json || ! -f "$stamp" || "$(cat "$stamp")" != "$web_key" ]] \
+        || ! node -e 'require("rollup")' >/dev/null 2>&1; then
+        npm ci --include=dev --include=optional --no-audit --no-fund
+        node -e 'require("rollup")'
         printf '%s\n' "$web_key" > "$stamp"
     fi
     npm run build -- --outDir ../.local/build/web --emptyOutDir

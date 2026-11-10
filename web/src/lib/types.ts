@@ -40,6 +40,8 @@ export interface Asset {
         compatibility_error?: string;
         thumbnail?: boolean;
         accuracy_verified?: boolean;
+        output_types?: string[];
+        toolkit_version?: string;
         [key: string]: unknown;
     };
 }

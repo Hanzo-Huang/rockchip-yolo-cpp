@@ -114,12 +114,19 @@ export function WarehousePage({
                                 <button
                                     className="model-visual"
                                     aria-label={`Inspect ${asset.name}`}
+                                    aria-describedby={`model-export-${asset.id}`}
                                     onClick={() => setPreview(asset)}
                                 >
                                     <span className="model-chip">RKNN</span>
                                     <small>
                                         {asset.info.task ?? "detect"} · {asset.info.width} × {asset.info.height} ·{" "}
                                         {asset.info.names?.length ?? 0} classes
+                                    </small>
+                                    <small className="model-export" id={`model-export-${asset.id}`}>
+                                        <span>
+                                            Outputs {asset.info.output_types?.join(" / ") || "unknown"}
+                                        </span>
+                                        <span>Toolkit {asset.info.toolkit_version ?? "unknown"}</span>
                                     </small>
                                 </button>
                             )}
@@ -188,7 +195,11 @@ export function WarehousePage({
                 (kind === "video" ? (
                     <VideoPreview asset={preview} onClose={() => setPreview(null)} />
                 ) : (
-                    <ModelDetails asset={preview} onClose={() => setPreview(null)} />
+                    <ModelDetails
+                        asset={data.models.find((asset) => asset.id === preview.id) ?? preview}
+                        onClose={() => setPreview(null)}
+                        refresh={refresh}
+                    />
                 ))}
         </>
     );

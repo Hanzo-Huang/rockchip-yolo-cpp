@@ -4,6 +4,7 @@
 #include "engine/task_model.hpp"
 #include <fstream>
 #include <cmath>
+#include <regex>
 
 namespace nvr::web
 {
@@ -34,17 +35,61 @@ Json inspect_video(const fs::path &file)
                                   : "Engine accepts 8-bit H.264/H.265 video only"}};
 }
 
+std::string embedded_rknn_toolkit_version(const fs::path &file)
+{
+    // Known RKNN exports store this string in the metadata near the file header.
+    // Bound the read so existing models can be inspected without loading them into RKNN.
+    std::ifstream input(file, std::ios::binary);
+    std::string header(4096, '\0');
+    input.read(header.data(), header.size());
+    header.resize(input.gcount());
+    if (header.compare(0, 8, "RKNN\0\0\0\0", 8) != 0)
+    {
+        return {};
+    }
+
+    static const std::regex toolkit(
+        R"(([0-9]+\.[0-9]+\.[0-9]+[A-Za-z0-9.+_-]{0,32})\(compiler version: [^\x00\r\n]{1,192}\)\))");
+    for (std::sregex_iterator it(header.begin(), header.end(), toolkit), end; it != end; ++it)
+    {
+        const size_t start = it->position(), size = it->length();
+        // The string has a little-endian length prefix and a trailing NUL.
+        if (start >= 4 && size < 256 && start + size < header.size() &&
+            static_cast<unsigned char>(header[start - 4]) == size &&
+            header.compare(start - 3, 3, "\0\0\0", 3) == 0 && header[start + size] == '\0')
+        {
+            return (*it)[1].str();
+        }
+    }
+    return {};
+}
+
 Json inspect_model(const fs::path &directory, const fs::path &bin)
 {
     Json info = read_model_metadata(directory / "metadata.yaml");
     const int width = info.at("width"), height = info.at("height");
-    info["size_bytes"] = fs::file_size(directory / "model.rknn");
+    const auto model = directory / "model.rknn";
+    info["size_bytes"] = fs::file_size(model);
+    const auto embedded_version = embedded_rknn_toolkit_version(model);
+    if (!embedded_version.empty())
+    {
+        info["toolkit_version"] = embedded_version;
+    }
     info["accuracy_verified"] = false;
     info["compatible"] = false;
     try
     {
-        auto tensors = parse_program_json(
-            capture({(bin / "rk-model-info").string(), (directory / "model.rknn").string()}, 30));
+        const auto output = capture({(bin / "rk-model-info").string(), model.string()}, 30);
+        auto tensors = parse_program_json(output);
+        static const std::regex toolkit(
+            R"(RKNN Model Information,[^\r\n]*?toolkit version:[ \t]*)"
+            R"(([0-9]+\.[0-9]+\.[0-9]+[A-Za-z0-9.+_-]{0,32})[ \t]*(?:\(|,|\r?\n|$))");
+        std::smatch version;
+        const auto logs_end = output.cbegin() + output.find('{');
+        if (std::regex_search(output.cbegin(), logs_end, version, toolkit))
+        {
+            info["toolkit_version"] = version[1].str();
+        }
         info["tensors"] = tensors;
         check(tensors["inputs"].size() == 1, "Model must have one input", 422);
         const auto &input = tensors["inputs"][0];

@@ -1,6 +1,7 @@
 #include "server/services/application.hpp"
 
 #include <cmath>
+#include <set>
 
 namespace nvr::web
 {
@@ -75,11 +76,42 @@ Application::Application(fs::path directory, fs::path binaries)
 
 Json Application::public_asset(Json asset, bool detail)
 {
+    auto &info = asset["info"];
+    if (asset["kind"] == "model" && !info.contains("toolkit_version"))
+    {
+        const auto version = embedded_rknn_toolkit_version(asset["path"].get<std::string>());
+        if (!version.empty())
+        {
+            info["toolkit_version"] = version;
+        }
+    }
     asset.erase("path");
     asset["references"] = store.references(asset["id"]);
+    if (info.contains("tensors") && info["tensors"].contains("outputs"))
+    {
+        std::set<std::string> types;
+        for (const auto &tensor : info["tensors"].at("outputs"))
+        {
+            // Older inspections only recorded the logical tensor type.
+            auto type = tensor.value("native_type", tensor.value("type", std::string()));
+            if (type == "FLOAT16")
+            {
+                type = "FP16";
+            }
+            if (type == "FLOAT32")
+            {
+                type = "FP32";
+            }
+            if (!type.empty() && type != "UNKNOW")
+            {
+                types.insert(type);
+            }
+        }
+        info["output_types"] = types;
+    }
     if (!detail)
     {
-        asset["info"].erase("tensors");
+        info.erase("tensors");
     }
     return asset;
 }

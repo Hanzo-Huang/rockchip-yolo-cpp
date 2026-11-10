@@ -57,9 +57,19 @@ export function RenameDialog({
         </Dialog>
     );
 }
-export function ModelDetails({ asset, onClose }: { asset: Asset; onClose: () => void }) {
+export function ModelDetails({
+    asset,
+    onClose,
+    refresh,
+}: {
+    asset: Asset;
+    onClose: () => void;
+    refresh: () => void;
+}) {
     const [yaml, setYAML] = useState("Loading metadata…"),
-        [error, setError] = useState("");
+        [error, setError] = useState(""),
+        [revalidationError, setRevalidationError] = useState(""),
+        [revalidating, setRevalidating] = useState(false);
     useEffect(() => {
         const controller = new AbortController();
         void api<{ yaml: string }>(
@@ -89,7 +99,31 @@ export function ModelDetails({ asset, onClose }: { asset: Asset; onClose: () => 
             </div>
             {error && <p className="error">{error}</p>}
             <pre className="metadata">{yaml}</pre>
+            {revalidationError && (
+                <p className="error" role="alert">
+                    {revalidationError}
+                </p>
+            )}
             <footer className="actions">
+                {!asset.info.toolkit_version && (
+                    <button
+                        disabled={revalidating}
+                        onClick={async () => {
+                            setRevalidationError("");
+                            setRevalidating(true);
+                            try {
+                                await api(`models/${asset.id}/revalidate`, "POST");
+                                refresh();
+                            } catch (e) {
+                                setRevalidationError(String(e));
+                            } finally {
+                                setRevalidating(false);
+                            }
+                        }}
+                    >
+                        {revalidating ? "Revalidating…" : "Revalidate model"}
+                    </button>
+                )}
                 <a className="button" href={`/api/v1/models/${asset.id}/download`}>
                     Download model bundle
                 </a>
