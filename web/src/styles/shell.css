@@ -9,12 +9,12 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    background: #171717;
+    background: var(--surface);
     border-right: 1px solid var(--border);
     padding: 24px 10px 18px;
 }
 .brand {
-    color: #eee;
+    color: var(--text);
     text-decoration: none;
     margin-bottom: 38px;
 }
@@ -38,24 +38,26 @@
     height: 48px;
     padding: 0;
     border: 0;
-    color: #aaa;
-    background: #242424;
+    color: var(--secondary);
+    background: var(--control);
     border-radius: 12px;
 }
-.nav-item.selected {
+.nav-item.selected,
+.nav-item[aria-pressed="true"] {
     background: var(--accent);
     color: white;
 }
-.nav-item.selected:hover {
-    background: #667afa;
+.nav-item.selected:hover,
+.nav-item[aria-pressed="true"]:hover {
+    background: var(--accent-hover);
 }
 .nav-tooltip {
     display: none;
     position: absolute;
     left: 60px;
-    background: #292929;
-    color: white;
-    border: 1px solid #444;
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--control-border);
     border-radius: 6px;
     padding: 6px 10px;
     white-space: nowrap;
@@ -68,6 +70,9 @@
 }
 .sidebar-bottom {
     margin-top: auto;
+    display: grid;
+    justify-items: center;
+    gap: 14px;
 }
 .board-mark {
     display: grid;
@@ -75,8 +80,8 @@
     width: 42px;
     height: 42px;
     border-radius: 12px;
-    background: #242424;
-    color: #aaa;
+    background: var(--control);
+    color: var(--secondary);
     font-size: 12px;
 }
 .workspace {
@@ -124,7 +129,7 @@ main {
     flex-wrap: wrap;
     gap: 12px 22px;
     padding: 10px 24px;
-    background: #171717;
+    background: var(--surface);
     border-top: 1px solid var(--border);
     font-size: 12px;
     color: var(--muted);
@@ -136,7 +141,7 @@ main {
 }
 .system-strip strong {
     font-weight: 400;
-    color: #bbb;
+    color: var(--secondary);
 }
 .system-strip .connection {
     margin-left: auto;
@@ -147,11 +152,11 @@ main {
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: #57b96a;
+    background: var(--connected);
     flex-shrink: 0;
 }
 .status-dot.offline {
-    background: #e7aa5a;
+    background: var(--offline);
 }
 .metric-label {
     white-space: nowrap;

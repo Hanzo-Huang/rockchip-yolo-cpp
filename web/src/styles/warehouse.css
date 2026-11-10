@@ -24,7 +24,7 @@
     width: 100%;
     position: relative;
     padding: 0;
-    background: #222;
+    background: var(--control);
     border: 0;
     border-radius: 0;
     overflow: hidden;
@@ -58,6 +58,7 @@
     bottom: 9px;
     font-size: 11px;
     background: #000b;
+    color: white;
     border-radius: 4px;
     padding: 2px 5px;
 }
@@ -116,15 +117,15 @@
     height: 170px;
     border: 0;
     border-radius: 0;
-    background: #202020;
+    background: var(--inset);
     position: relative;
     gap: 12px;
 }
 .model-chip {
     font-size: 12px;
     letter-spacing: 1px;
-    border: 1px solid #535d96;
-    color: #abb7ff;
+    border: 1px solid var(--notice-border);
+    color: var(--accent-text);
     padding: 3px 9px;
     border-radius: 6px;
 }
@@ -149,7 +150,7 @@
 }
 .job span {
     margin-left: auto;
-    color: #abb7ff;
+    color: var(--accent-text);
 }
 .job small {
     width: 100%;

@@ -6,10 +6,10 @@
     bottom: auto;
     margin: 0;
     transform: translate(-50%, -50%);
-    border: 1px solid #444;
+    border: 1px solid var(--control-border);
     border-radius: 16px;
-    background: #1b1b1b;
-    color: #ededed;
+    background: var(--panel);
+    color: var(--text);
     padding: 25px;
     width: min(560px, 94vw);
     max-height: 90dvh;
@@ -49,7 +49,7 @@
     background: none;
     font-size: 24px;
     padding: 0 5px;
-    color: #bbb;
+    color: var(--secondary);
 }
 .dialog p {
     font-size: 12px;
@@ -84,18 +84,18 @@
     flex: 1;
 }
 .notice {
-    background: #232738;
-    border: 1px solid #444d71;
-    color: #c2c9ed;
+    background: var(--notice-bg);
+    border: 1px solid var(--notice-border);
+    color: var(--notice-text);
     padding: 12px 14px;
     border-radius: 8px;
     font-size: 12px;
     margin-top: 16px;
 }
 .error {
-    color: #f19a9a;
-    background: #332125;
-    border: 1px solid #61343b;
+    color: var(--danger-text);
+    background: var(--danger-bg);
+    border: 1px solid var(--danger-border);
     border-radius: 8px;
     padding: 9px 12px;
     font-size: 12px;
@@ -108,16 +108,16 @@
 }
 .file-picker input::file-selector-button {
     font: inherit;
-    color: #ededed;
-    background: #292929;
-    border: 1px solid #444;
+    color: var(--text);
+    background: var(--control);
+    border: 1px solid var(--control-border);
     border-radius: 6px;
     padding: 8px 12px;
     margin-right: 12px;
     cursor: pointer;
 }
 .file-picker input::file-selector-button:hover {
-    background: #383838;
+    background: var(--control-hover);
 }
 .file-picker small {
     overflow-wrap: anywhere;
@@ -134,7 +134,7 @@ details {
 }
 summary {
     cursor: pointer;
-    color: #ccc;
+    color: var(--secondary);
     font-size: 12px;
 }
 .native-video {
@@ -149,13 +149,13 @@ summary {
     font:
         11px ui-monospace,
         monospace;
-    color: #b5bfff;
+    color: var(--accent-text);
     margin: 20px 0;
 }
 .metadata {
     padding: 18px;
-    background: #111;
-    color: #ccc;
+    background: var(--inset);
+    color: var(--secondary);
     border: 1px solid var(--border);
     border-radius: 8px;
     font:

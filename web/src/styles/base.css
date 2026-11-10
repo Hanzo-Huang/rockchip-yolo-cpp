@@ -1,15 +1,68 @@
 :root {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    color: #ededed;
-    background: #000;
+    color: var(--text);
+    background: var(--page);
     font-synthesis: none;
     font-size: 14px;
     line-height: 1.5;
     color-scheme: dark;
+    --page: #000;
+    --text: #ededed;
+    --secondary: #bbb;
     --muted: #a0a0a0;
     --border: #303030;
+    --control-border: #444;
     --accent: #5267ee;
+    --accent-hover: #667afa;
+    --accent-text: #abb7ff;
+    --focus: #9aa9ff;
     --surface: #171717;
+    --panel: #1b1b1b;
+    --inset: #111;
+    --control: #242424;
+    --control-hover: #333;
+    --control-hover-border: #555;
+    --notice-bg: #232738;
+    --notice-border: #444d71;
+    --notice-text: #c2c9ed;
+    --success-bg: #1d2b20;
+    --success-border: #355b3c;
+    --success-text: #98dda4;
+    --danger-bg: #332125;
+    --danger-border: #743844;
+    --danger-text: #f19a9a;
+    --connected: #57b96a;
+    --offline: #e7aa5a;
+}
+:root[data-theme="light"] {
+    color-scheme: light;
+    --page: #f1f4f8;
+    --text: #192335;
+    --secondary: #46546a;
+    --muted: #536176;
+    --border: #d1d9e5;
+    --control-border: #8593a8;
+    --accent: #384dc5;
+    --accent-hover: #2d3fa8;
+    --accent-text: #3146af;
+    --focus: #3e53c8;
+    --surface: #fff;
+    --panel: #fff;
+    --inset: #f8faff;
+    --control: #e7ecf5;
+    --control-hover: #d8e0ef;
+    --control-hover-border: #73829a;
+    --notice-bg: #eaf0ff;
+    --notice-border: #a3b3e7;
+    --notice-text: #324479;
+    --success-bg: #e7f5eb;
+    --success-border: #9ac8a7;
+    --success-text: #226236;
+    --danger-bg: #fcecef;
+    --danger-border: #df9da8;
+    --danger-text: #9d293c;
+    --connected: #26823e;
+    --offline: #a26317;
 }
 * {
     box-sizing: border-box;
@@ -26,8 +79,8 @@ button,
 .button {
     border: 1px solid var(--border);
     border-radius: 8px;
-    background: #242424;
-    color: #ededed;
+    background: var(--control);
+    color: var(--text);
     padding: 8px 13px;
     font-size: 12px;
     font-weight: 500;
@@ -43,8 +96,8 @@ button,
 }
 button:hover,
 .button:hover {
-    background: #333;
-    border-color: #555;
+    background: var(--control-hover);
+    border-color: var(--control-hover-border);
 }
 button:disabled {
     opacity: 0.4;
@@ -56,8 +109,8 @@ button.primary {
     color: white;
 }
 button.primary:hover {
-    background: #667afa;
-    border-color: #667afa;
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
 }
 button.danger {
     background: #a83340;
@@ -68,7 +121,7 @@ button.danger {
     color: #f19a9a !important;
 }
 a {
-    color: #a0adff;
+    color: var(--accent-text);
 }
 h1,
 h2,
@@ -106,21 +159,21 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 summary:focus-visible {
-    outline: 2px solid #9aa9ff;
+    outline: 2px solid var(--focus);
     outline-offset: 3px;
 }
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
 select {
-    background: #111;
-    border: 1px solid #444;
+    background: var(--inset);
+    border: 1px solid var(--control-border);
     border-radius: 8px;
-    color: #ededed;
+    color: var(--text);
     padding: 10px 12px;
     width: 100%;
     min-width: 0;
 }
 input::placeholder {
-    color: #999;
+    color: var(--muted);
 }
 select {
     appearance: none;
@@ -130,8 +183,12 @@ select {
     background-position: right 14px center;
     background-size: 16px;
 }
+:root[data-theme="light"] select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%2346546a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
 @media (forced-colors: active) {
-    select {
+    select,
+    :root[data-theme="light"] select {
         appearance: auto;
         background-image: none;
     }
@@ -149,7 +206,7 @@ label {
     display: flex;
     flex-direction: column;
     gap: 7px;
-    color: #ccc;
+    color: var(--secondary);
     font-size: 12px;
     margin: 17px 0;
 }

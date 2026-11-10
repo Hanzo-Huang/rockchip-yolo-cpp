@@ -40,21 +40,21 @@
 .badge {
     font-size: 10px;
     padding: 3px 7px;
-    border: 1px solid #444;
+    border: 1px solid var(--control-border);
     border-radius: 6px;
-    background: #242424;
-    color: #bbb;
+    background: var(--control);
+    color: var(--secondary);
     white-space: nowrap;
 }
 .badge.good {
-    color: #98dda4;
-    border-color: #355b3c;
-    background: #1d2b20;
+    color: var(--success-text);
+    border-color: var(--success-border);
+    background: var(--success-bg);
 }
 .badge.bad {
-    color: #f19a9a;
-    border-color: #743844;
-    background: #332125;
+    color: var(--danger-text);
+    border-color: var(--danger-border);
+    background: var(--danger-bg);
 }
 .card-head .badge {
     background: #0008;
@@ -119,6 +119,7 @@
     background: none;
 }
 .preview-button:focus-visible {
+    outline-color: #9aa9ff;
     outline-offset: -3px;
 }
 .channel-body {
@@ -197,12 +198,12 @@
     white-space: nowrap;
 }
 .empty-state {
-    border: 1px dashed #333;
+    border: 1px dashed var(--control-border);
     border-radius: 16px;
-    background: #111;
+    background: var(--inset);
     text-align: center;
     padding: 80px 25px;
-    color: #ddd;
+    color: var(--text);
 }
 .empty-state p {
     color: var(--muted);

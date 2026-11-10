@@ -1,10 +1,23 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { useSnapshot } from "./lib/useSnapshot";
 import { bytes } from "./lib/types";
 import { Dashboard } from "./features/dashboard/Dashboard";
 import { WarehousePage } from "./features/warehouse/WarehousePage";
 import { UploadDialog } from "./components/UploadDialog";
+
 type Page = "dashboard" | "videos" | "models";
+type Theme = "dark" | "light";
+
+const themeStorageKey = "rockchip-yolo-theme";
+
+function savedTheme(): Theme {
+    try {
+        return localStorage.getItem(themeStorageKey) === "light" ? "light" : "dark";
+    } catch {
+        return "dark";
+    }
+}
+
 function pageFromURL(): Page {
     const page = window.location.hash.slice(1);
     return page === "models" || page === "videos" ? page : "dashboard";
@@ -44,6 +57,26 @@ export function App() {
     const { data, connected, error, refresh } = useSnapshot();
     const [page, setPage] = useState<Page>(pageFromURL),
         [upload, setUpload] = useState<"video" | "model" | null>(null);
+    const [theme, setTheme] = useState<Theme>(savedTheme);
+
+    useLayoutEffect(() => {
+        const root = document.documentElement;
+        root.dataset.theme = theme;
+        document
+            .querySelector('meta[name="theme-color"]')
+            ?.setAttribute("content", getComputedStyle(root).backgroundColor);
+    }, [theme]);
+
+    function toggleTheme() {
+        const next = theme === "dark" ? "light" : "dark";
+        setTheme(next);
+        try {
+            localStorage.setItem(themeStorageKey, next);
+        } catch {
+            // The theme still applies when browser storage is unavailable.
+        }
+    }
+
     useEffect(() => {
         const syncPage = () => {
             setPage(pageFromURL());
@@ -94,6 +127,30 @@ export function App() {
                     ))}
                 </nav>
                 <div className="sidebar-bottom">
+                    <button
+                        type="button"
+                        className="nav-item"
+                        aria-label="Light theme"
+                        aria-pressed={theme === "light"}
+                        onClick={toggleTheme}
+                    >
+                        <svg
+                            viewBox="0 0 24 24"
+                            width="20"
+                            height="20"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            aria-hidden="true"
+                        >
+                            <circle cx="12" cy="12" r="4" />
+                            <path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" />
+                        </svg>
+                        <span className="nav-tooltip" aria-hidden="true">
+                            Switch to {theme === "dark" ? "light" : "dark"} theme
+                        </span>
+                    </button>
                     <span className="board-mark" title="RK3576 / RK3588 · MPP / RGA / RKNPU">
                         RK
                     </span>
