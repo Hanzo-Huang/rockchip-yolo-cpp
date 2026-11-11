@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to build and publish
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -11,8 +17,19 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-24.04
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
+      - name: Validate release tag
+        run: |
+          case "$TAG" in
+            v*) ;;
+            *) echo "Release tag must start with v" >&2; exit 1 ;;
+          esac
+
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.TAG }}
 
       - name: Build ARM64 package
         run: ./nvr cross-build
@@ -22,7 +39,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           archive="rockchip-yolo-cpp-${TAG}-ubuntu26.04-arm64.tar.gz"
