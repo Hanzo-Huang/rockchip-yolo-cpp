@@ -53,6 +53,7 @@ int run_worker(const Json &config)
     WorkerControl control;
     control.file = config.value("source_type", std::string("file")) == "file";
     control.preview = config.contains("thumbnail_file");
+    const bool recording = config.value("recording", false);
     control.update({{"run_id", config.at("run_id")}, {"channel", config.at("id")}});
     std::signal(SIGTERM, signal_stop);
     std::signal(SIGINT, signal_stop);
@@ -111,7 +112,10 @@ int run_worker(const Json &config)
             require(!control.file || target <= duration || duration == 0, "seek exceeds duration");
             auto directory = std::filesystem::path(config.at("output").get<std::string>()) /
                              ("epoch-" + std::to_string(epoch));
-            std::filesystem::create_directories(directory);
+            if (recording)
+            {
+                std::filesystem::create_directories(directory);
+            }
 
             std::unique_ptr<DetectorPool> detector;
             if (!config.value("preview_only", false))
@@ -138,8 +142,7 @@ int run_worker(const Json &config)
 
             // Original compressed video feeds recording and browser playback.
             Recorder recorder(directory, decoder.parameters(), decoder.time_base(),
-                              config.value("segment_seconds", 60.0),
-                              config.value("recording", !control.file));
+                              config.value("segment_seconds", 60.0), recording);
             std::unique_ptr<Mp4Stream> stream;
             recorder.observe_packet = [&](const AVPacket *packet)
             {
@@ -227,8 +230,12 @@ int run_worker(const Json &config)
                 {
                     try
                     {
-                        std::ofstream events(directory / "detections.jsonl");
-                        require(bool(events), "open detection log");
+                        std::ofstream events;
+                        if (recording && detector)
+                        {
+                            events.open(directory / "detections.jsonl");
+                            require(bool(events), "open detection log");
+                        }
                         if (detector)
                         {
                             detector->run(
@@ -250,8 +257,11 @@ int run_worker(const Json &config)
                                         event["type"] = "detections";
                                         std::cout << event.dump() << std::endl;
                                     }
-                                    events << result.dump() << '\n';
-                                    require(bool(events), "write detection log");
+                                    if (events.is_open())
+                                    {
+                                        events << result.dump() << '\n';
+                                        require(bool(events), "write detection log");
+                                    }
                                     {
                                         std::lock_guard<std::mutex> lock(detection_mutex);
                                         latest_detection = result;
@@ -293,7 +303,11 @@ int run_worker(const Json &config)
                                               : Json(0)}});
                                 });
                         }
-                        events.flush();
+                        if (events.is_open())
+                        {
+                            events.flush();
+                            require(bool(events), "flush detection log");
+                        }
                     }
                     catch (...)
                     {

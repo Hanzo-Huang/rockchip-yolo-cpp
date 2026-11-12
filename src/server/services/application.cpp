@@ -245,7 +245,7 @@ Json Application::save_channel(const Json &input, const std::string &id)
                    {"inference_workers", workers},
                    {"confidence", confidence},
                    {"nms_iou", iou},
-                   {"recording", values.value("recording", type != "file")}});
+                   {"recording", values.value("recording", false)}});
     if (editing && supervisor.active(id))
     {
         auto previous_config = existing["config"];
