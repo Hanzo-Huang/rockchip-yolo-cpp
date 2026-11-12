@@ -36,9 +36,9 @@ std::vector<std::string> segments(const std::string &path)
     return result;
 }
 
-Json body_json(const HttpRequestPtr &request)
+Json body_json(const HttpRequestPtr &request, size_t limit = 65536)
 {
-    check(request->body().size() <= 65536, "JSON body is too large", 413);
+    check(request->body().size() <= limit, "JSON body is too large", 413);
     auto value = Json::parse(request->body());
     check(value.is_object(), "Expected a JSON object");
     return value;
@@ -258,7 +258,7 @@ HttpResponsePtr Application::route(const HttpRequestPtr &request, const std::str
         }
         if (parts.size() == 1 && method == Post)
         {
-            return json_response(save_channel(body_json(request)), 201);
+            return json_response(save_channel(body_json(request, 512 * 1024)), 201);
         }
         check(parts.size() >= 2, "Channel not found", 404);
         auto channel = store.channel(parts[1]);
@@ -268,7 +268,7 @@ HttpResponsePtr Application::route(const HttpRequestPtr &request, const std::str
         }
         if (parts.size() == 2 && method == Patch)
         {
-            return json_response(save_channel(body_json(request), parts[1]));
+            return json_response(save_channel(body_json(request, 512 * 1024), parts[1]));
         }
         if (parts.size() == 2 && method == Delete)
         {

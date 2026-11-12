@@ -246,6 +246,29 @@ Json Application::save_channel(const Json &input, const std::string &id)
                    {"confidence", confidence},
                    {"nms_iou", iou},
                    {"recording", values.value("recording", false)}});
+    // Class indices belong to the selected model. An absent filter enables every class.
+    const auto filter = input.contains("class_ids") || !editing || existing["model_id"] == model_id
+                            ? values.value("class_ids", Json())
+                            : Json();
+    if (!filter.is_null())
+    {
+        const auto task = model["info"].value("task", std::string("detect"));
+        check(task == "detect" || task == "segment" || task == "pose" || task == "obb",
+              "This model does not produce object detections");
+        const auto count = model["info"].value("names", Json::array()).size();
+        check(filter.is_array() && filter.size() <= count, "Invalid class selection");
+        std::set<int> selected;
+        for (const auto &item : filter)
+        {
+            check(item.is_number_integer() && item.get<uint64_t>() < count,
+                  "Selected class does not belong to this model");
+            selected.insert(item.get<int>());
+        }
+        if (selected.size() != count)
+        {
+            config["class_ids"] = selected;
+        }
+    }
     if (editing && supervisor.active(id))
     {
         auto previous_config = existing["config"];

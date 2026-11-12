@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
 import { active, type Camera, type Channel, type Snapshot } from "../../lib/types";
 import { Dialog } from "../../components/Dialog";
+import { ClassPicker } from "./ClassPicker";
 export function ChannelEditor({
     channel,
     data,
@@ -30,6 +31,7 @@ export function ChannelEditor({
         [confidence, setConfidence] = useState(channel?.config.confidence ?? 0.35);
     const [recording, setRecording] = useState(channel?.config.recording ?? false),
         [restart, setRestart] = useState(true);
+    const [classIds, setClassIds] = useState<number[] | null>(channel?.config.class_ids ?? null);
     const [cameras, setCameras] = useState<Camera[]>([]),
         [busy, setBusy] = useState(false),
         [error, setError] = useState("");
@@ -44,6 +46,9 @@ export function ChannelEditor({
     }, []);
     const currentChannel = data.channels.find((item) => item.id === channel?.id) ?? channel;
     const isActive = !!currentChannel && active(currentChannel.runtime.state);
+    const modelInfo = data.models.find((asset) => asset.id === model)?.info;
+    const labels = modelInfo?.names;
+    const canFilterClasses = ["detect", "segment", "pose", "obb"].includes(modelInfo?.task ?? "detect");
     async function save() {
         setBusy(true);
         setError("");
@@ -88,6 +93,7 @@ export function ChannelEditor({
                 confidence,
                 nms_iou: channel?.config.nms_iou ?? 0.45,
                 recording,
+                class_ids: canFilterClasses ? classIds : null,
             };
             const saved = await api<Channel>(
                 channel ? `channels/${channel.id}` : "channels",
@@ -143,7 +149,10 @@ export function ChannelEditor({
                             aria-label="Model"
                             required
                             value={model}
-                            onChange={(e) => setModel(e.target.value)}
+                            onChange={(e) => {
+                                setModel(e.target.value);
+                                setClassIds(null);
+                            }}
                             disabled={busy}
                         >
                             <option value="">Select a model</option>
@@ -223,6 +232,15 @@ export function ChannelEditor({
                         </small>
                     </label>
                 )}
+                {canFilterClasses && labels?.length ? (
+                    <ClassPicker
+                        key={model}
+                        names={labels}
+                        selected={classIds}
+                        onChange={setClassIds}
+                        disabled={busy}
+                    />
+                ) : null}
                 <details>
                     <summary>Processing settings</summary>
                     <div className="form-grid">

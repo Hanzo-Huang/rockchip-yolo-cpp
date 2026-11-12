@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <set>
 #include <thread>
 #include "engine/jpeg_preview.hpp"
 #include "engine/mp4_stream.hpp"
@@ -54,6 +55,8 @@ int run_worker(const Json &config)
     control.file = config.value("source_type", std::string("file")) == "file";
     control.preview = config.contains("thumbnail_file");
     const bool recording = config.value("recording", false);
+    const bool filter_classes = config.contains("class_ids");
+    const auto class_ids = config.value("class_ids", std::set<int>{});
     control.update({{"run_id", config.at("run_id")}, {"channel", config.at("id")}});
     std::signal(SIGTERM, signal_stop);
     std::signal(SIGINT, signal_stop);
@@ -248,6 +251,17 @@ int run_worker(const Json &config)
                                 },
                                 [&](const Frame &frame, Json result)
                                 {
+                                    if (filter_classes)
+                                    {
+                                        auto &items = result["detections"].get_ref<Json::array_t &>();
+                                        items.erase(std::remove_if(items.begin(), items.end(),
+                                                                   [&](const Json &item)
+                                                                   {
+                                                                       return !class_ids.count(
+                                                                           item.at("class_id").get<int>());
+                                                                   }),
+                                                    items.end());
+                                    }
                                     ++inferred;
                                     result["run_id"] = config.at("run_id");
                                     result["epoch"] = epoch;

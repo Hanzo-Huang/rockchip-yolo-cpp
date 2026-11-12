@@ -55,6 +55,7 @@ export interface ChannelConfig {
     confidence: number;
     nms_iou: number;
     recording: boolean;
+    class_ids?: number[];
 }
 export interface Channel {
     id: string;
