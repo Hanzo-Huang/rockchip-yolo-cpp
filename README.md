@@ -42,7 +42,7 @@ Keep the extracted directory together; the executables need its libraries and we
 
 ### Start a channel
 
-1. In **Model warehouse**, upload a `.rknn` model and its `metadata.yaml`, or a ZIP containing both.
+1. In **Model warehouse**, choose **Import from Hugging Face**, or upload a `.rknn` model and its `metadata.yaml` (or a ZIP containing both).
 2. For a video file, upload an MP4 in **Video warehouse**. For a camera or RTSP stream, select it when adding a channel.
 3. In **Dashboard**, choose **Add channel**, select the source and model, then **Start**.
 
@@ -53,8 +53,31 @@ but browser playback depends on codec support.
 
 ## Models and performance
 
-Export each model for the board's chip: RK3576 and RK3588 need their own `.rknn`
-exports. The metadata must match the model's input size and class names.
+### Preconverted RKNN models
+
+Download board-specific builds from [HanzoHuang on Hugging Face](https://huggingface.co/HanzoHuang/models?search=RKNN2).
+Start with [YOLO26](https://huggingface.co/HanzoHuang/YOLO26-RKNN2-Ultralytics),
+[YOLO11](https://huggingface.co/HanzoHuang/YOLO11-RKNN2-Ultralytics),
+[YOLOv8](https://huggingface.co/HanzoHuang/YOLOv8-RKNN2-Ultralytics), or
+[YOLOv10](https://huggingface.co/HanzoHuang/YOLOv10-RKNN2-Ultralytics).
+Open **Files and versions** and choose the toolkit version, task, model size,
+chip, and precision. For example, this is the
+[YOLO26n segmentation model for RK3576, INT8](https://huggingface.co/HanzoHuang/YOLO26-RKNN2-Ultralytics/blob/main/models/v2.3.2/segment/yolo26n-seg/rk3576/int8/model.rknn).
+
+In **Model warehouse → Import from Hugging Face**, paste the public `.rknn` file
+link. The board downloads it and the adjacent `metadata.yaml`, then checks
+compatibility. A public ZIP containing both files also works. The board needs
+internet access and `curl` for direct imports. For offline use, download the
+pair from the same folder and upload it in Model warehouse.
+
+For detection, instance segmentation, pose, and oriented boxes, open
+**Detection classes** in channel settings to choose which classes appear in
+the results. The model still runs on each inference frame.
+
+### Model compatibility
+
+Choose the export for your board's chip. RK3576 and RK3588 need their own
+`.rknn` files. The metadata must match the model's input size and class names.
 
 The application supports both **Ultralytics RKNN exports** and **Rockchip Model
 Zoo RKNN outputs**. Support depends on the output tensors and model metadata.
