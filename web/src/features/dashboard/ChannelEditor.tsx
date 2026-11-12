@@ -129,12 +129,7 @@ export function ChannelEditor({
                         <select
                             aria-label="Source"
                             value={source}
-                            onChange={(e) => {
-                                setSource(e.target.value as typeof source);
-                                if (!channel) {
-                                    setRecording(e.target.value !== "file");
-                                }
-                            }}
+                            onChange={(e) => setSource(e.target.value as typeof source)}
                             disabled={busy}
                         >
                             <option value="file">Video warehouse</option>
