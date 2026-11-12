@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.18)
 
 project(
     rockchip_yolo_cpp
-    VERSION 0.1.0
+    VERSION 0.3.0
     DESCRIPTION "C++ YOLO acceleration demo for Rockchip RK3576 and RK3588"
     LANGUAGES CXX)
 

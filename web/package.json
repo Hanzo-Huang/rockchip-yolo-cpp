@@ -2,7 +2,7 @@
     "name": "rockchip-yolo-console",
     "description": "C++ YOLO performance demo dashboard for Rockchip RK3576 and RK3588",
     "private": true,
-    "version": "1.0.0",
+    "version": "0.3.0",
     "type": "module",
     "scripts": {
         "build": "tsc -b && vite build"

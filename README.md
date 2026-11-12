@@ -21,15 +21,13 @@ Uses **MPP** for video decoding, **RGA** for preprocessing, and **RKNN** for NPU
 Use a board image with working **MPP, RGA, and RKNPU drivers**. The prebuilt
 package targets **Ubuntu 26.04 ARM64** and includes the application, shared
 libraries, and web frontend. Models are supplied separately.
-The v0.1.0 archive supports detection only. Build from source if you are using
-that release and need the additional tasks below.
 
 Download the runtime archive and `SHA256SUMS` from
 [Releases](https://github.com/Hanzo-Huang/rockchip-yolo-cpp/releases), then run on the board:
 
 ```bash
 sha256sum --check SHA256SUMS
-tar -xzf rockchip-yolo-cpp-v0.1.0-ubuntu26.04-arm64.tar.gz
+tar -xzf rockchip-yolo-cpp-v0.3.0-ubuntu26.04-arm64.tar.gz
 cd rockchip-yolo-cpp
 ./nvr run
 ```
