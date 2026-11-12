@@ -41,12 +41,12 @@ Store::Store(const fs::path &database)
             "NULL,detail_json TEXT NOT NULL,created_at TEXT NOT NULL)");
     execute("PRAGMA user_version=1");
     // A process restart cannot truthfully resume an in-memory validation task.
-    auto interrupted = query("SELECT id,detail_json FROM jobs WHERE state='validating'");
+    auto interrupted = query("SELECT id,detail_json FROM jobs WHERE state IN ('downloading','validating')");
     for (auto &row : interrupted)
     {
         auto job = Json::parse(row["detail_json"].get<std::string>());
         job["state"] = "rejected";
-        job["error"] = "Validation interrupted by server restart; upload again";
+        job["error"] = "Import interrupted by server restart. Submit it again.";
         save_job(job);
     }
 }

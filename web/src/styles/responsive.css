@@ -52,7 +52,8 @@
     .page-heading p {
         font-size: 11px;
     }
-    .page-heading > .primary {
+    .page-heading > .primary,
+    .warehouse-heading-actions > button {
         padding: 8px 10px;
         white-space: nowrap;
         font-size: 11px;
@@ -125,6 +126,9 @@
 @media (max-width: 420px) {
     .page-heading {
         flex-wrap: wrap;
+    }
+    .warehouse-heading-actions {
+        justify-content: flex-start;
     }
     .card-head h3 {
         font-size: 14px;

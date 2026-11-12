@@ -73,7 +73,8 @@ Json read_json(const fs::path &path)
     return j;
 }
 
-std::string capture(const std::vector<std::string> &args, int timeout_seconds, size_t limit)
+std::string capture(const std::vector<std::string> &args, int timeout_seconds, size_t limit,
+                    std::ostream *destination, const std::atomic_bool *cancelled)
 {
     check(!args.empty(), "Empty subprocess command", 500);
     int descriptors[2];
@@ -81,7 +82,14 @@ std::string capture(const std::vector<std::string> &args, int timeout_seconds, s
     posix_spawn_file_actions_t actions;
     posix_spawn_file_actions_init(&actions);
     posix_spawn_file_actions_adddup2(&actions, descriptors[1], STDOUT_FILENO);
-    posix_spawn_file_actions_adddup2(&actions, descriptors[1], STDERR_FILENO);
+    if (destination)
+    {
+        posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
+    }
+    else
+    {
+        posix_spawn_file_actions_adddup2(&actions, descriptors[1], STDERR_FILENO);
+    }
     posix_spawn_file_actions_addclose(&actions, descriptors[0]);
     std::vector<char *> argv;
     for (auto &argument : args)
@@ -100,6 +108,21 @@ std::string capture(const std::vector<std::string> &args, int timeout_seconds, s
     }
     fcntl(descriptors[0], F_SETFL, O_NONBLOCK);
     std::string output;
+    size_t received = 0;
+    auto consume = [&](const char *bytes, size_t count)
+    {
+        if (count > limit - received)
+        {
+            return false;
+        }
+        received += count;
+        if (destination)
+        {
+            return bool(destination->write(bytes, std::streamsize(count)));
+        }
+        output.append(bytes, count);
+        return true;
+    };
     int status = 0;
     bool exited = false, failed = false;
     auto start = std::chrono::steady_clock::now();
@@ -111,30 +134,39 @@ std::string capture(const std::vector<std::string> &args, int timeout_seconds, s
         ssize_t n;
         while ((n = read(descriptors[0], buffer, sizeof(buffer))) > 0)
         {
-            output.append(buffer, size_t(n));
-            if (output.size() > limit)
+            if (!consume(buffer, size_t(n)))
             {
                 failed = true;
                 break;
             }
         }
         exited = waitpid(pid, &status, WNOHANG) == pid;
-        if (failed ||
+        const bool stopped = cancelled && cancelled->load();
+        if (failed || stopped ||
             std::chrono::steady_clock::now() - start > std::chrono::seconds(timeout_seconds))
         {
-            kill(pid, SIGKILL);
-            waitpid(pid, &status, 0);
+            if (!exited)
+            {
+                kill(pid, SIGKILL);
+                waitpid(pid, &status, 0);
+            }
             close(descriptors[0]);
-            throw Error(422, "Validation exceeded its resource limit");
+            throw Error(422, stopped ? "Operation interrupted"
+                                     : "Validation exceeded its resource limit");
         }
     }
     char tail[8192];
     ssize_t n;
-    while ((n = read(descriptors[0], tail, sizeof(tail))) > 0 && output.size() < limit)
+    while ((n = read(descriptors[0], tail, sizeof(tail))) > 0)
     {
-        output.append(tail, size_t(n));
+        if (!consume(tail, size_t(n)))
+        {
+            failed = true;
+            break;
+        }
     }
     close(descriptors[0]);
+    check(!failed, "Validation exceeded its resource limit", 422);
     check(WIFEXITED(status) && WEXITSTATUS(status) == 0, "Validation tool rejected the file", 422);
     return output;
 }

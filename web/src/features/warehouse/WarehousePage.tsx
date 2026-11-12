@@ -4,6 +4,7 @@ import { bytes, seconds, type Asset, type Snapshot } from "../../lib/types";
 import { ConfirmDelete } from "../../components/ConfirmDelete";
 import { RenameDialog, ModelDetails } from "./AssetDialogs";
 import { VideoPreview } from "./VideoPreview";
+import { HuggingFaceImport } from "./HuggingFaceImport";
 export function WarehousePage({
     kind,
     data,
@@ -18,11 +19,16 @@ export function WarehousePage({
     const [query, setQuery] = useState(""),
         [rename, setRename] = useState<Asset | null>(null),
         [deleting, setDeleting] = useState<Asset | null>(null),
-        [preview, setPreview] = useState<Asset | null>(null);
+        [preview, setPreview] = useState<Asset | null>(null),
+        [importing, setImporting] = useState(false);
     const assets = kind === "video" ? data.videos : data.models,
         visible = assets.filter((a) => a.name.toLowerCase().includes(query.toLowerCase()));
     const jobs = data.jobs
-        .filter((j) => j.kind === kind && ["uploading", "validating", "rejected"].includes(j.state))
+        .filter(
+            (j) =>
+                j.kind === kind &&
+                ["uploading", "downloading", "validating", "rejected"].includes(j.state),
+        )
         .slice(0, 6);
     return (
         <>
@@ -38,9 +44,14 @@ export function WarehousePage({
                             : "metadata.yaml + .rknn · paired files or ZIP"}
                     </p>
                 </div>
-                <button className="primary" onClick={onUpload}>
-                    <span aria-hidden="true">↑</span> Upload {kind}
-                </button>
+                <div className="warehouse-heading-actions">
+                    {kind === "model" && (
+                        <button onClick={() => setImporting(true)}>Import from Hugging Face</button>
+                    )}
+                    <button className="primary" onClick={onUpload}>
+                        <span aria-hidden="true">↑</span> Upload {kind}
+                    </button>
+                </div>
             </div>
             {jobs.length > 0 && (
                 <div className="jobs" aria-live="polite">
@@ -174,6 +185,9 @@ export function WarehousePage({
                         </article>
                     ))}
                 </div>
+            )}
+            {kind === "model" && importing && (
+                <HuggingFaceImport onClose={() => setImporting(false)} onQueued={refresh} />
             )}
             {rename && (
                 <RenameDialog asset={rename} onClose={() => setRename(null)} refresh={refresh} />

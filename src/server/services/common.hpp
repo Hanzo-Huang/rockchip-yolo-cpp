@@ -1,6 +1,7 @@
 #pragma once
 
 #include <nlohmann/json.hpp>
+#include <atomic>
 #include <filesystem>
 #include <mutex>
 #include <string>
@@ -8,6 +9,7 @@
 #include <stdexcept>
 #include <functional>
 #include <chrono>
+#include <iosfwd>
 
 namespace nvr::web
 {
@@ -36,7 +38,8 @@ std::string display_name(const Json &body);
 void private_write(const fs::path &path, const std::string &content);
 Json read_json(const fs::path &path);
 std::string capture(const std::vector<std::string> &args, int timeout_seconds = 20,
-                    size_t limit = 1024 * 1024);
+                    size_t limit = 1024 * 1024, std::ostream *destination = nullptr,
+                    const std::atomic_bool *cancelled = nullptr);
 Json parse_program_json(const std::string &output);
 std::string redact_url(const std::string &value);
 std::string now_iso();

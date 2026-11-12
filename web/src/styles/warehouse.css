@@ -164,3 +164,9 @@
 .job small {
     width: 100%;
 }
+.warehouse-heading-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}

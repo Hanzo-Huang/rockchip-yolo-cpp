@@ -2,6 +2,7 @@
 
 #include <fstream>
 #include <algorithm>
+#include <regex>
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -30,6 +31,101 @@ void valid_filename(const std::string &name)
     for (unsigned char c : name)
     {
         check(c >= 32 && c != 127 && c != '\\', "Invalid upload filename");
+    }
+}
+
+struct HubFile
+{
+    std::string repo, revision, path;
+    bool archive;
+};
+
+HubFile hub_file(const std::string &url)
+{
+    static const std::regex pattern(
+        R"(https://huggingface\.co/([A-Za-z0-9_][A-Za-z0-9_.-]*/[A-Za-z0-9_][A-Za-z0-9_.-]*)/(?:blob|resolve)/([A-Za-z0-9_][A-Za-z0-9_.-]*)/((?:[A-Za-z0-9_][A-Za-z0-9_.-]*/)*[A-Za-z0-9_][A-Za-z0-9_.-]*)(?:\?download=true)?)");
+    std::smatch match;
+    check(url.size() <= 2048 && std::regex_match(url, match, pattern),
+          "Paste a public Hugging Face model file link");
+    auto ext = extension(match[3]);
+    check(ext == ".rknn" || ext == ".zip", "Choose an RKNN file or a model ZIP");
+    return {match[1], match[2], match[3], ext == ".zip"};
+}
+
+std::vector<std::string> hub_request(const std::string &url)
+{
+    // Hub file resolution can redirect large files to the Hub's storage CDN.
+    return {"curl", "--disable", "--fail", "--silent", "--globoff", "--location",
+            "--max-redirs", "4", "--proto", "=https", "--proto-redir", "=https",
+            "--connect-timeout", "10", "--speed-limit", "1024", "--speed-time", "30", "--", url};
+}
+
+void download_hub_file(const std::string &url, const fs::path &destination, size_t limit,
+                       const std::string &label, int timeout, const std::atomic_bool &stopping)
+{
+    std::ofstream output(destination, std::ios::binary);
+    check(bool(output), "Cannot open model staging file", 507);
+    try
+    {
+        capture(hub_request(url), timeout, limit, &output, &stopping);
+    }
+    catch (const Error &error)
+    {
+        if (stopping)
+        {
+            throw;
+        }
+        throw Error(error.status, "Could not download " + label +
+                                      " from Hugging Face. Check the link, file size and connection.");
+    }
+    output.close();
+    check(bool(output) && fs::file_size(destination) > 0, "Incomplete Hugging Face download", 422);
+}
+
+void prepare_hub_model(const HubFile &file, const fs::path &staging, const fs::path &prepared,
+                       const std::atomic_bool &stopping)
+{
+    const std::string hub = "https://huggingface.co";
+    std::string revision = file.revision;
+    if (!file.archive)
+    {
+        // Resolve the revision once so the binary and its metadata come from the same commit.
+        const auto url = hub + "/api/models/" + file.repo + "/revision/" + revision + "?expand=sha";
+        try
+        {
+            auto response = capture(hub_request(url), 20, MiB, nullptr, &stopping);
+            revision = Json::parse(response).at("sha").get<std::string>();
+        }
+        catch (const std::exception &)
+        {
+            if (stopping)
+            {
+                throw;
+            }
+            throw Error(422,
+                        "Could not resolve the Hugging Face revision. Check that the model and revision are public.");
+        }
+        check(std::regex_match(revision, std::regex("[a-f0-9]{40}")),
+              "Invalid Hugging Face model revision", 422);
+    }
+    const auto base = hub + "/" + file.repo + "/resolve/" + revision + "/";
+    const auto available = fs::space(staging).available;
+    check(available >= 3 * MiB, "Insufficient storage for model download", 507);
+    const auto limit = size_t(std::min<uint64_t>(256 * MiB, (available - MiB) / 2));
+    if (file.archive)
+    {
+        auto archive = staging / "model.zip";
+        download_hub_file(base + file.path, archive, limit, "model ZIP", 900, stopping);
+        extract_model_zip(archive, prepared);
+    }
+    else
+    {
+        const auto parent = fs::path(file.path).parent_path();
+        download_hub_file(base + (parent / "metadata.yaml").generic_string(),
+                          prepared / "metadata.yaml", 65536, "the matching metadata.yaml", 30,
+                          stopping);
+        download_hub_file(base + file.path, prepared / "model.rknn", limit, "the RKNN model",
+                          900, stopping);
     }
 }
 } // namespace
@@ -164,6 +260,21 @@ Json Warehouse::complete(const std::string &id)
     return job;
 }
 
+Json Warehouse::import_hugging_face(const Json &input)
+{
+    const std::string url = input.value("url", std::string());
+    hub_file(url);
+    const auto name = display_name(input);
+    std::lock_guard<std::mutex> lock(mutex_);
+    check(pending_.size() < 8, "Warehouse is busy. Try again after the current jobs finish.", 429);
+    Json job = {{"id", new_id()}, {"kind", "model"}, {"name", name}, {"state", "downloading"},
+                {"hub_url", url}, {"total", 0}, {"received", 0}, {"created_at", now_iso()}};
+    store_.save_job(job);
+    pending_.push_back(job["id"].get<std::string>());
+    ready_.notify_one();
+    return job;
+}
+
 void Warehouse::cancel(const std::string &id)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -242,6 +353,11 @@ void Warehouse::validate_loop()
         catch (const std::exception &error)
         {
             auto job = store_.job(id);
+            if (job.contains("hub_url") && !fs::exists(root_ / "models" / id))
+            {
+                std::error_code ignored;
+                fs::remove_all(root_ / "staging" / id, ignored);
+            }
             job["state"] = "rejected";
             job["error"] = std::string(error.what()).substr(0, 1000);
             store_.save_job(job);
@@ -287,7 +403,13 @@ void Warehouse::validate(const std::string &id)
     }
     else
     {
-        if (job["files"].size() == 1)
+        if (job.contains("hub_url"))
+        {
+            prepare_hub_model(hub_file(job["hub_url"]), staging, prepared, stopping_);
+            job["state"] = "validating";
+            store_.save_job(job);
+        }
+        else if (job["files"].size() == 1)
         {
             extract_model_zip(staging / "part-0", prepared);
         }

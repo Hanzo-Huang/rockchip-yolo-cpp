@@ -170,6 +170,10 @@ HttpResponsePtr Application::route(const HttpRequestPtr &request, const std::str
     if (resource == "videos" || resource == "models")
     {
         const std::string kind = resource == "videos" ? "video" : "model";
+        if (kind == "model" && parts.size() == 2 && parts[1] == "hugging-face" && method == Post)
+        {
+            return json_response(warehouse.import_hugging_face(body_json(request)), 202);
+        }
         if (parts.size() == 1 && method == Get)
         {
             Json result = Json::array();

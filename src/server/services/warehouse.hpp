@@ -17,7 +17,7 @@ class Warehouse
     std::mutex mutex_;
     std::condition_variable ready_;
     std::deque<std::string> pending_;
-    bool stopping_ = false;
+    std::atomic_bool stopping_{false};
     std::thread validator_;
 
     void validate_loop();
@@ -32,6 +32,7 @@ public:
     Json append(const std::string &id, size_t index, uint64_t offset, std::string_view bytes);
     Json complete(const std::string &id);
     void cancel(const std::string &id);
+    Json import_hugging_face(const Json &input);
 
     // Existing assets.
     Json revalidate_model(const std::string &id);

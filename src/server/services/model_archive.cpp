@@ -18,6 +18,8 @@ void extract_model_zip(const fs::path &file, const fs::path &destination)
     int entries = 0, files = 0;
     bool yaml = false, model = false;
     uint64_t total = 0;
+    // Leave room for the downloadable bundle built from the extracted files.
+    const auto storage_limit = fs::space(destination).available / 2;
     int status;
     while ((status = archive_read_next_header(raw, &entry)) == ARCHIVE_OK)
     {
@@ -70,6 +72,7 @@ void extract_model_zip(const fs::path &file, const fs::path &destination)
             total += uint64_t(count);
             check(total <= 256ULL * 1024 * 1024 && (!is_yaml || size <= 65536),
                   "ZIP exceeds extraction limit", 422);
+            check(total <= storage_limit, "Insufficient storage to extract the model ZIP", 507);
             output.write(buffer, count);
             check(bool(output), "Write extracted file", 507);
         }
