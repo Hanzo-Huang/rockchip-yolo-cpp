@@ -27,9 +27,15 @@ ModelOptions model_options(const Json &info)
     {
         options.spatial_head = SpatialHead::YoloX;
     }
-    options.center_crop = info.value("preprocess", options.task == ModelTask::Classify
-                                                       ? std::string("center_crop")
-                                                       : std::string("letterbox")) == "center_crop";
+    const std::string preprocess =
+        info.value("preprocess", std::string(options.task == ModelTask::Classify ? "center_crop"
+                                             : options.task == ModelTask::Depth  ? "stretch"
+                                                                                 : "letterbox"));
+    require(preprocess == "letterbox" || preprocess == "center_crop" || preprocess == "stretch",
+            "Invalid preprocessing policy");
+    options.resize = preprocess == "center_crop" ? ResizePolicy::CenterCrop
+                     : preprocess == "stretch"   ? ResizePolicy::Stretch
+                                                 : ResizePolicy::Letterbox;
     const std::string resize = info.value("dense_resize", std::string("none"));
     require(resize == "none" || resize == "half_pixel" || resize == "align_corners",
             "Unsupported dense interpolation policy");

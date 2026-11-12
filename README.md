@@ -88,8 +88,13 @@ three rows of width and height pairs from the example's anchor file into
 `anchors`. Use `head: yolox` for YOLOX and `end2end: true` for YOLOv10 and
 YOLO26 detection. For COCO pose models, use `kpt_shape: [17, 3]`.
 
-Classification uses a center crop. Other tasks use letterboxing. JSON results
-contain `detections`, with optional `mask`, `keypoints`, or `polygon` per object;
+Classification uses a center crop, depth fills the model input, and other tasks
+use letterboxing by default. For an existing YOLO26 depth export with
+`preprocess: letterbox` in its sidecar, change it to `preprocess: stretch` and
+re-import the model to match Ultralytics. For INT8 exports, use the same resize
+policy during calibration.
+
+JSON results contain `detections`, with optional `mask`, `keypoints`, or `polygon` per object;
 classification uses `classification`, and semantic/depth models use `dense`.
 Raster maps are reduced for preview and encoded as alternating value/count runs.
 Depth values decode as `offset + value * scale`; 65536 marks an invalid sample.

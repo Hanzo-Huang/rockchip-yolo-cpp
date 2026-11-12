@@ -156,13 +156,15 @@ export function NativeVideo({
             frameCallback = element.requestVideoFrameCallback(draw);
         };
         const renderOverlay = (mediaTime: number) => {
-            const target =
-                mediaTime * 1e6 + (fileURL ? latest.current.sourceStart : (header?.origin_us ?? 0));
+            const target = Math.round(
+                mediaTime * 1e6 + (fileURL ? latest.current.sourceStart : (header?.origin_us ?? 0)),
+            );
             let matching: Detection | undefined;
             for (let i = history.length - 1; i >= 0; i--) {
                 const item = history[i];
                 if (
-                    item.pts_us <= target &&
+                    // The media time and stream origin are rounded separately from inference PTS.
+                    item.pts_us <= target + 1 &&
                     item.run_id === header?.run_id &&
                     item.epoch === header?.epoch
                 ) {

@@ -30,7 +30,8 @@ class Preprocessor
     int width_, height_, stride_;
     DmaBuffer &input_;
     std::string mode_;
-    bool painted_ = false, center_crop_ = false;
+    bool painted_ = false;
+    ResizePolicy resize_;
     Geometry previous_;
     std::vector<uint8_t> cpu_output_;
 
@@ -38,7 +39,7 @@ class Preprocessor
 
 public:
     Preprocessor(DmaBuffer &input, int width, int height, int stride, const std::string &mode,
-                 bool center_crop = false);
+                 ResizePolicy resize = ResizePolicy::Letterbox);
     ~Preprocessor();
 
     Preprocessor(const Preprocessor &) = delete;

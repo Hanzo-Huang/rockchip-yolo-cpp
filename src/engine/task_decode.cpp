@@ -539,37 +539,74 @@ TaskResult TaskPostprocessor::decode(const Geometry &g,
             int height = d[spec.channels_first ? 2 : 1], width = d[spec.channels_first ? 3 : 2];
             ResultRaster mask;
             mask.box = item.detection.box;
+            const float left = mask.box[0] * resize_width / source_width + padding_x;
+            const float top = mask.box[1] * resize_height / source_height + padding_y;
+            const float box_width = (mask.box[2] - mask.box[0]) * resize_width / source_width;
+            const float box_height = (mask.box[3] - mask.box[1]) * resize_height / source_height;
             int limit =
                 std::max(1, int(std::sqrt(32768.0 / double(std::max(size_t(1), kept.size())))));
-            limit = std::min(limit, 160);
-            mask.width = std::max(
-                1, std::min(limit, int(std::ceil((mask.box[2] - mask.box[0]) * resize_width /
-                                                 source_width * float(width) / model_width))));
-            mask.height = std::max(
-                1, std::min(limit, int(std::ceil((mask.box[3] - mask.box[1]) * resize_height /
-                                                 source_height * float(height) / model_height))));
+            mask.width = std::clamp(int(std::ceil(box_width)), 1, limit);
+            mask.height = std::clamp(int(std::ceil(box_height)), 1, limit);
+
+            const auto &prototypes = outputs[size_t(prototypes_)];
+            auto dot = [&](int px, int py)
+            {
+                const size_t pixel = size_t(py) * width + px;
+                float logit = 0;
+                for (int c = 0; c < mask_channels_; ++c)
+                {
+                    size_t index = spec.channels_first ? size_t(c) * width * height + pixel
+                                                       : pixel * mask_channels_ + c;
+                    logit += candidate.extra[size_t(c)] * prototypes[index];
+                }
+                return logit;
+            };
+            auto proto_x = [&](float x)
+            {
+                return std::clamp(x * float(width) / model_width - .5f, 0.f, float(width - 1));
+            };
+            auto proto_y = [&](float y)
+            {
+                return std::clamp(y * float(height) / model_height - .5f, 0.f, float(height - 1));
+            };
+            const int x0 = int(proto_x(left)), y0 = int(proto_y(top));
+            const int cols = int(std::ceil(proto_x(left + box_width))) - x0 + 1;
+            const int rows = int(std::ceil(proto_y(top + box_height))) - y0 + 1;
+            std::vector<float> logits;
+            // Reuse the cropped prototype logits when the preview samples them densely.
+            if (size_t(cols) * rows <= size_t(mask.width) * mask.height)
+            {
+                logits.reserve(size_t(cols) * rows);
+                for (int py = y0; py < y0 + rows; ++py)
+                {
+                    for (int px = x0; px < x0 + cols; ++px)
+                    {
+                        logits.push_back(dot(px, py));
+                    }
+                }
+            }
+            auto logit_at = [&](int px, int py)
+            {
+                return logits.empty() ? dot(px, py) : logits[size_t(py - y0) * cols + px - x0];
+            };
+            const float step_x = box_width / float(mask.width);
+            const float step_y = box_height / float(mask.height);
+            // Interpolate the signed logits before thresholding so contours can cross
+            // between prototype cells. The raster still covers only the detection box.
             for (int y = 0; y < mask.height; ++y)
             {
+                const float fy = proto_y(top + (float(y) + .5f) * step_y);
+                const int py = int(fy), next_y = std::min(py + 1, y0 + rows - 1);
+                const float dy = fy - float(py);
                 for (int x = 0; x < mask.width; ++x)
                 {
-                    float sx = mask.box[0] +
-                               (float(x) + .5f) * (mask.box[2] - mask.box[0]) / float(mask.width);
-                    float sy = mask.box[1] +
-                               (float(y) + .5f) * (mask.box[3] - mask.box[1]) / float(mask.height);
-                    int px = std::clamp(int((sx * resize_width / source_width + padding_x) *
-                                            float(width) / model_width),
-                                        0, width - 1);
-                    int py = std::clamp(int((sy * resize_height / source_height + padding_y) *
-                                            float(height) / model_height),
-                                        0, height - 1);
-                    float logit = 0;
-                    for (int c = 0; c < mask_channels_; ++c)
-                    {
-                        size_t index = spec.channels_first
-                                           ? size_t(c) * width * height + size_t(py) * width + px
-                                           : (size_t(py) * width + px) * mask_channels_ + c;
-                        logit += candidate.extra[size_t(c)] * outputs[size_t(prototypes_)][index];
-                    }
+                    const float fx = proto_x(left + (float(x) + .5f) * step_x);
+                    const int px = int(fx), next_x = std::min(px + 1, x0 + cols - 1);
+                    const float dx = fx - float(px);
+                    const float a = logit_at(px, py), b = logit_at(next_x, py);
+                    const float c = logit_at(px, next_y), d = logit_at(next_x, next_y);
+                    const float upper = a + (b - a) * dx, lower = c + (d - c) * dx;
+                    const float logit = upper + (lower - upper) * dy;
                     append_run(mask, std::isfinite(logit) && logit > 0 ? 1 : 0);
                 }
             }

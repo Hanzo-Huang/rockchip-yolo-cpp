@@ -46,17 +46,34 @@ TaskResult TaskPostprocessor::decode_dense(const Geometry &g, const TensorView &
                           : (size_t(y) * width + x) * channels + channel];
     };
     ResultRaster raster;
-    raster.width = std::min(128, g.width);
-    raster.height =
-        std::max(1, int(std::round(float(raster.width) * source_height / source_width)));
-    if (raster.height > 128)
+    if (options_.task == ModelTask::Depth)
     {
-        raster.height = 128;
-        raster.width =
-            std::max(1, int(std::round(float(raster.height) * source_width / source_height)));
+        // Use more of the existing pixel budget for wide and tall video.
+        constexpr float pixel_budget = 128 * 128;
+        constexpr float max_side = 192;
+        const float scale = std::min({1.f, max_side / std::max(source_width, source_height),
+                                      std::sqrt(pixel_budget / (source_width * source_height))});
+        raster.width = std::max(1, int(source_width * scale));
+        raster.height = std::max(1, int(source_height * scale));
+    }
+    else
+    {
+        raster.width = std::min(128, g.width);
+        raster.height =
+            std::max(1, int(std::round(float(raster.width) * source_height / source_width)));
+        if (raster.height > 128)
+        {
+            raster.height = 128;
+            raster.width =
+                std::max(1, int(std::round(float(raster.height) * source_width / source_height)));
+        }
     }
     raster.box = {0, 0, float(source_width), float(source_height)};
     std::vector<float> samples;
+    if (options_.task == ModelTask::Depth)
+    {
+        samples.reserve(size_t(raster.width) * raster.height);
+    }
     for (int y = 0; y < raster.height; ++y)
     {
         for (int x = 0; x < raster.width; ++x)

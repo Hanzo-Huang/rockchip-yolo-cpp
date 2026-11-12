@@ -87,7 +87,8 @@ Json read_model_metadata(const std::filesystem::path &path)
             "Invalid coordinate units");
     if (info.contains("preprocess"))
     {
-        require(info["preprocess"] == "letterbox" || info["preprocess"] == "center_crop",
+        require(info["preprocess"] == "letterbox" || info["preprocess"] == "center_crop" ||
+                    info["preprocess"] == "stretch",
                 "Invalid preprocessing policy");
     }
     if (info.contains("dense_resize"))
@@ -111,6 +112,9 @@ ModelOptions configured_model_options(const Json &config)
     {
         return model_options(read_model_metadata(sidecar));
     }
-    return model_options(config);
+    auto info = config;
+    // The channel's preprocess field selects RGA or CPU, not the model's resize policy.
+    info.erase("preprocess");
+    return model_options(info);
 }
 } // namespace nvr

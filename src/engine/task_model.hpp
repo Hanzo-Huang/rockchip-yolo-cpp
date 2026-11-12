@@ -47,7 +47,7 @@ struct ModelOptions
     int classes = 0;
     int keypoints = 17, keypoint_dimensions = 3;
     bool normalized = false, end_to_end = false;
-    bool center_crop = false;
+    ResizePolicy resize = ResizePolicy::Letterbox;
     DenseResize dense_resize = DenseResize::None;
     SpatialHead spatial_head = SpatialHead::Automatic;
     std::array<std::array<float, 6>, 3> anchors{};
