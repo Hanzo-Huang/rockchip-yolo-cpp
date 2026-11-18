@@ -117,6 +117,7 @@ private:
     int features_ = 0, proposals_ = 0, mask_channels_ = 0;
     bool feature_major_ = true, box_major_ = true, score_major_ = true;
     std::vector<int> regressions_, class_scores_, extras_;
+    std::array<bool, 3> spatial_score_logits_{};
 
     static void append_run(ResultRaster &raster, uint32_t value);
 
@@ -140,6 +141,7 @@ public:
     }
 
     const char *description() const;
+    bool has_spatial_score_logits() const;
 
     // Dense outputs can be decoded directly from native FP16 or quantized storage.
     TaskResult decode_dense(const Geometry &geometry, const TensorView &output) const;

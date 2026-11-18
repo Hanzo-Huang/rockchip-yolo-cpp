@@ -333,10 +333,10 @@ TaskResult TaskPostprocessor::decode(const Geometry &g,
             int reg = regressions_[branch], cls = class_scores_[branch];
             const auto &d = specs_[size_t(reg)].dimensions;
             int width = d[3], height = d[2], cells = width * height;
-            // Rockchip pose and OBB pack raw class logits after the DFL bins.
             const bool packed_logits = reg == cls;
+            const bool score_logits = spatial_score_logits_[branch];
             const float score_floor =
-                packed_logits ? std::log(confidence / (1 - confidence)) : confidence;
+                score_logits ? std::log(confidence / (1 - confidence)) : confidence;
             int channels = d[1] - (packed_logits ? options_.classes : 0), bins = channels / 4,
                 stride = input_width_ / width;
             for (int p = 0; p < cells; ++p)
@@ -361,7 +361,7 @@ TaskResult TaskPostprocessor::decode(const Geometry &g,
                 {
                     continue;
                 }
-                if (packed_logits)
+                if (score_logits)
                 {
                     c.score = 1 / (1 + std::exp(-c.score));
                 }

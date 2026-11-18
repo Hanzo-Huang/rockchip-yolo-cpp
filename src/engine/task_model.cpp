@@ -323,6 +323,12 @@ TaskPostprocessor::TaskPostprocessor(const ModelOptions &options,
                 "Invalid DFL regression channels");
         regressions_.push_back(reg);
         class_scores_.push_back(cls);
+        // The final Ultralytics cv3 convolution precedes sigmoid. Rockchip
+        // pose and OBB also expose logits, packed with the regression bins.
+        const auto &score_name = specs[size_t(cls)].name;
+        spatial_score_logits_[size_t(branch)] =
+            packed_task || (score_name.find("/cv3.") != std::string::npos &&
+                            score_name.find("/Conv_output_0") != std::string::npos);
         if (stride == 4)
         {
             const auto &extra = specs[size_t(reg + 3)].dimensions;
@@ -340,6 +346,12 @@ TaskPostprocessor::TaskPostprocessor(const ModelOptions &options,
                 "Raw model is missing keypoints, angles, or mask coefficients");
     }
     layout_ = Layout::Dfl;
+}
+
+bool TaskPostprocessor::has_spatial_score_logits() const
+{
+    return std::any_of(spatial_score_logits_.begin(), spatial_score_logits_.end(),
+                       [](bool logits) { return logits; });
 }
 
 const char *TaskPostprocessor::description() const

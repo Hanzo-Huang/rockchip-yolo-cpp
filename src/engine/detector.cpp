@@ -61,7 +61,7 @@ Detector::Detector(const std::string &model, const std::string &mode, bool verif
         // Preserve the quantized detection fast path; task heads use reusable float buffers.
         const bool fast_dfl =
             layout_kind == TaskPostprocessor::Layout::Dfl && !options_.end_to_end &&
-            io.n_output == 9 &&
+            !task_postprocessor_->has_spatial_score_logits() && io.n_output == 9 &&
             std::all_of(output_attrs_.begin(), output_attrs_.end(),
                         [](const rknn_tensor_attr &attr)
                         {
