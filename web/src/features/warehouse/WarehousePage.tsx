@@ -1,10 +1,54 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../../lib/api";
-import { bytes, seconds, type Asset, type Snapshot } from "../../lib/types";
+import { bytes, seconds, type Asset, type Job, type Snapshot } from "../../lib/types";
 import { ConfirmDelete } from "../../components/ConfirmDelete";
 import { RenameDialog, ModelDetails } from "./AssetDialogs";
 import { VideoPreview } from "./VideoPreview";
 import { HuggingFaceImport } from "./HuggingFaceImport";
+
+const dismissalKey = (id: string) => `warehouse-dismissed:${id}`;
+
+function JobNotice({ job, onDismiss }: { job: Job; onDismiss: (id: string) => void }) {
+    const rejected = job.state === "rejected";
+    const [hovered, setHovered] = useState(false);
+    const [focused, setFocused] = useState(false);
+
+    useEffect(() => {
+        if (!rejected || hovered || focused) return;
+        const timer = window.setTimeout(() => onDismiss(job.id), 5000);
+        return () => window.clearTimeout(timer);
+    }, [rejected, hovered, focused, job.id, onDismiss]);
+
+    return (
+        <div
+            className={rejected ? "job job-rejected" : "job"}
+            onPointerEnter={() => setHovered(true)}
+            onPointerLeave={() => setHovered(false)}
+        >
+            <div className="job-message">
+                <strong>{job.name}</strong>
+                <span>
+                    {job.state === "uploading"
+                        ? `${Math.round((job.received / job.total) * 100)}% uploaded`
+                        : job.state}
+                </span>
+                {job.error && <small>{job.error}</small>}
+            </div>
+            {rejected && (
+                <button
+                    type="button"
+                    aria-label={`Dismiss notice for ${job.name}`}
+                    onClick={() => onDismiss(job.id)}
+                    onFocus={() => setFocused(true)}
+                    onBlur={() => setFocused(false)}
+                >
+                    <span aria-hidden="true">×</span>
+                </button>
+            )}
+        </div>
+    );
+}
+
 export function WarehousePage({
     kind,
     data,
@@ -23,11 +67,31 @@ export function WarehousePage({
         [importing, setImporting] = useState(false);
     const assets = kind === "video" ? data.videos : data.models,
         visible = assets.filter((a) => a.name.toLowerCase().includes(query.toLowerCase()));
+    const [dismissed, setDismissed] = useState(() => {
+        try {
+            return new Set(
+                data.jobs
+                    .filter((job) => sessionStorage.getItem(dismissalKey(job.id)))
+                    .map((job) => job.id),
+            );
+        } catch {
+            return new Set<string>();
+        }
+    });
+    const dismiss = useCallback((id: string) => {
+        setDismissed((previous) => new Set([...previous, id]));
+        try {
+            sessionStorage.setItem(dismissalKey(id), "1");
+        } catch {
+            // The notice still dismisses when browser storage is unavailable.
+        }
+    }, []);
     const jobs = data.jobs
         .filter(
             (j) =>
                 j.kind === kind &&
-                ["uploading", "downloading", "validating", "rejected"].includes(j.state),
+                (["uploading", "downloading", "validating"].includes(j.state) ||
+                    (j.state === "rejected" && !dismissed.has(j.id))),
         )
         .slice(0, 6);
     return (
@@ -53,24 +117,11 @@ export function WarehousePage({
                     </button>
                 </div>
             </div>
-            {jobs.length > 0 && (
-                <div className="jobs" aria-live="polite">
-                    {jobs.map((job) => (
-                        <div
-                            key={job.id}
-                            className={`job ${job.state === "rejected" ? "error" : ""}`}
-                        >
-                            <strong>{job.name}</strong>
-                            <span>
-                                {job.state === "uploading"
-                                    ? `${Math.round((job.received / job.total) * 100)}% uploaded`
-                                    : job.state}
-                            </span>
-                            {job.error && <small>{job.error}</small>}
-                        </div>
-                    ))}
-                </div>
-            )}
+            <div className="jobs" aria-live="polite">
+                {jobs.map((job) => (
+                    <JobNotice key={job.id} job={job} onDismiss={dismiss} />
+                ))}
+            </div>
             <div className="section-bar">
                 <span>
                     {visible.length} {kind === "video" ? "videos" : "models"}

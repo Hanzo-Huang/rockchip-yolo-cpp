@@ -143,26 +143,48 @@
     overflow-wrap: anywhere;
 }
 .jobs {
+    position: fixed;
+    top: max(16px, env(safe-area-inset-top));
+    right: max(16px, env(safe-area-inset-right));
+    z-index: 6;
+    width: min(360px, calc(100vw - 32px));
+    max-height: 75dvh;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    margin: 16px 0;
+    overflow-y: auto;
 }
 .job {
-    padding: 11px 15px;
+    padding: 12px;
     border: 1px solid var(--border);
     border-radius: 8px;
+    background: var(--panel);
     display: flex;
-    gap: 15px;
-    font-size: 12px;
-    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 14px;
 }
-.job span {
-    margin-left: auto;
+.job-rejected {
+    border-color: var(--danger-border);
+    background: var(--danger-bg);
+    color: var(--danger-text);
+}
+.job-message {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+    overflow-wrap: anywhere;
+}
+.job-message span {
     color: var(--accent-text);
 }
-.job small {
-    width: 100%;
+.job button {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    flex: none;
+    font-size: 20px;
 }
 .warehouse-heading-actions {
     display: flex;
